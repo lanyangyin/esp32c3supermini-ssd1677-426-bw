@@ -1,2 +1,69 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.python-version
+
+# ===== MicroPython 编译产物 =====
+*.mpy
+esp-x/
+
+# ===== 项目生成物（不要入库） =====
+# 字模（用 gen_font.py 生成）
+esp/www/fonts/*
+!esp/www/fonts/base_*
+!esp/www/fonts/.gitkeep
+
+esp/sd/fonts/*.bin
+esp/sd/fonts/*.idx
+esp/sd/fonts/*.map
+
+# 字体索引（设备上运行 build_font_index 生成）
+esp/fonts_index.json
+
+# 上传的 BIN / 背景 / 缩略图（本地测试用）
+esp/bins/*.bin
+esp/bins/*.thumb
+esp/bgs/*.bin
+esp/bgs/*.thumb
+esp/sd/e6/bins/*.bin
+esp/sd/e6/bins/*.thumb
+esp/sd/e6/bgs/*.bin
+esp/sd/e6/bgs/*.thumb
+
+# 设备生成的配置
+esp/boot_cfg.json
+esp/networks.json
+
+# ===== PC 侧字体（不入库，用 gen_font.py 处理 TTF 原件） =====
+*.ttf
+*.otf
+*.woff
+*.woff2
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# ===== 系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== 日志与临时文件 =====
+*.log
+*.tmp
+*.bak
+*.orig
+
+# ===== 保留空目录占位 =====
+!esp/www/fonts/.gitkeep
+!esp/sd/fonts/.gitkeep
 /ttf/
-/fonts/
