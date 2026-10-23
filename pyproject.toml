@@ -6,4 +6,5 @@ dependencies = [
     "fonttools>=4.67.0",
     "mpy-cross>=1.29.0.post2",
     "pillow>=13.0.0",
+    "pyside6>=6.12.0",
 ]

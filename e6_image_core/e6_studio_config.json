@@ -1,0 +1,30 @@
+{
+  "exposure": -40,
+  "contrast": 2,
+  "clarity": 93,
+  "shadow": 22,
+  "highlight": 4,
+  "fit_index": 0,
+  "dither_index": 0,
+  "serpentine": true,
+  "device_ip": "192.168.8.240",
+  "zoom": 100,
+  "bg_color_idx": 0,
+  "brush_size": 24,
+  "current_tool": "pencil",
+  "current_color": {
+    "index": 0
+  },
+  "edit_locked": false,
+  "font_size": 43,
+  "font_family": "Monospace",
+  "direction": "vertical-rl",
+  "align": "center",
+  "line_height_x10": 18,
+  "letter_spacing": 0,
+  "rotate": 0,
+  "text_bold": false,
+  "text_italic": false,
+  "text_underline": false,
+  "text_content": ""
+}

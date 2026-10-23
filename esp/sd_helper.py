@@ -1,21 +1,20 @@
-# sd_helper.py — SD 卡挂载（硬件 SPI，slot=2）
+# sd_helper.py — 基于 storage.py 的封装，统一挂载到 /sd
 import os
 import time
+from storage import SdStorage
 
 SD_MOUNT = '/sd'
-SD_ROOT = '/sd/e6'
-SD_BINS = '/sd/e6/bins'
-SD_BGS = '/sd/e6/bgs'
-SD_FONTS = '/sd/e6/fonts'
+SD_BINS = '/sd/bins'
+SD_BGS = '/sd/bgs'
+SD_FONTS = '/sd/fonts'
 FLASH_BINS = '/bins'
 FLASH_BGS = '/bgs'
 
 _mounted = False
-_sd_obj = None
-
+_sd = None
 
 def mount_sd():
-    global _mounted, _sd_obj
+    global _mounted, _sd
     if _mounted:
         return True
 
@@ -26,31 +25,31 @@ def mount_sd():
     except OSError:
         pass
 
-    for attempt in range(3):
-        try:
-            import machine
-            sd = machine.SDCard(
-                slot=2,
-                sck=machine.Pin(10),
-                mosi=machine.Pin(7),
-                miso=machine.Pin(1),
-                cs=machine.Pin(5),
-                freq=400_000
-            )
-            os.mount(sd, SD_MOUNT)
-            _sd_obj = sd
-            _mounted = True
-            print('[SD] mounted at', SD_MOUNT, '(hardware SPI)')
-            return True
-        except Exception as e:
-            print('[SD] attempt', attempt + 1, 'failed:', e)
-            time.sleep(0.5)
-    return False
+    if _sd is None:
+        # 复用原工程的 SPI 引脚配置
+        _sd = SdStorage(
+            mount_point=SD_MOUNT,
+            slot=2,
+            sck=10,
+            mosi=7,
+            miso=1,
+            cs=5,
+            freq=400_000
+        )
+
+    try:
+        _sd.mount(auto_format=True)
+        _mounted = True
+        print('[SD] mounted at', SD_MOUNT, '(hardware SPI)')
+        return True
+    except Exception as e:
+        print('[SD] mount failed:', e)
+        return False
 
 
 def ensure_dirs():
     if mount_sd():
-        for d in (SD_ROOT, SD_BINS, SD_BGS, SD_FONTS):
+        for d in (SD_BINS, SD_BGS, SD_FONTS):
             try:
                 os.mkdir(d)
             except OSError:

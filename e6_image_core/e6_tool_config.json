@@ -1,0 +1,11 @@
+{
+  "exposure": -49,
+  "contrast": 6,
+  "clarity": 61,
+  "shadow": 38,
+  "highlight": 0,
+  "fit_index": 0,
+  "dither_index": 0,
+  "serpentine": true,
+  "device_ip": "192.168.8.240"
+}

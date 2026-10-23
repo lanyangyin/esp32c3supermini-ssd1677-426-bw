@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>网格拼图 - E6</title>
+<title>黑白网格拼图 - E6</title>
 <style>
   :root{
     color-scheme:dark;
@@ -58,13 +58,14 @@
   .status.err{color:var(--danger);background:#2a1414}
   .status.busy{color:#7db8da;background:#132033}
   .mosaic-wrap{
-    border:1px solid var(--line);border-radius:4px;background:#0a0a08;
+    border:1px solid var(--line);border-radius:4px;background:#fff;
     padding:8px;display:grid;place-items:center;overflow:hidden;
   }
   #mosaicCanvas{
-    display:block;width:100%;max-width:720px;height:auto;
+    display:block;width:100%;max-width:800px;height:auto;
     image-rendering:pixelated;cursor:pointer;
     border:1px solid #2a2a25;border-radius:2px;
+    background:#fff;
   }
   .modal-mask{
     position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;
@@ -93,7 +94,7 @@
     border-radius:5px;background:var(--paper-raised);cursor:pointer;align-items:center;
   }
   .picker-item:hover{border-color:var(--focus)}
-  .picker-thumb{width:80px;height:53px;flex-shrink:0;border-radius:3px;background:#000;image-rendering:pixelated}
+  .picker-thumb{width:80px;height:48px;flex-shrink:0;border-radius:3px;background:#fff;image-rendering:pixelated;border:1px solid var(--line)}
   .picker-info{min-width:0;flex:1}
   .picker-label{font-size:12px;color:var(--ink);font-weight:600;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -101,34 +102,18 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .modal-actions{display:flex;gap:6px}
   .modal-actions button{flex:1}
-  .solid-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:6px}
+  .solid-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-bottom:6px}
   .solid-cell{
     height:40px;border-radius:6px;cursor:pointer;
     border:1px solid rgba(0,0,0,.35);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
     display:flex;align-items:center;justify-content:center;
-    font-size:11px;font-weight:700;color:#fff;
-    text-shadow:0 0 3px #000,0 0 3px #000;
+    font-size:11px;font-weight:700;
     outline:2px solid transparent;outline-offset:-2px;
   }
   .solid-cell:hover{outline-color:var(--focus)}
-  .solid-cell.white-cell{color:#222;text-shadow:none}
-  .pseudo-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:6px}
-  .pseudo-cell{
-    position:relative;aspect-ratio:1.7;border-radius:6px;cursor:pointer;
-    border:1px solid rgba(0,0,0,.35);overflow:hidden;
-    outline:2px solid transparent;outline-offset:-2px;
-  }
-  .pseudo-cell:hover{outline-color:var(--focus)}
-  .pseudo-cell canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
-  .pseudo-cell .name-label{
-    position:absolute;top:2px;left:4px;font-size:10px;color:#fff;font-weight:700;
-    text-shadow:0 0 2px #000,0 0 2px #000,0 0 2px #000;pointer-events:none;line-height:1;
-  }
-  .pseudo-cell .density-label{
-    position:absolute;bottom:0;right:0;background:rgba(0,0,0,.65);color:#fff;
-    font-size:9px;line-height:12px;padding:0 4px;font-weight:600;pointer-events:none;
-  }
+  .solid-cell.white-cell{color:#222;border-color:#ccc}
+  .solid-cell.black-cell{color:#fff}
   .storage-tag{
     display:inline-block;padding:0 5px;border-radius:8px;
     font-size:9px;font-weight:700;line-height:14px;margin-left:4px;
@@ -162,7 +147,7 @@
 <body data-nav-layout="scroll">
 
 <header>
-  <h1><span class="brand"></span>网格拼图</h1>
+  <h1><span class="brand"></span>黑白网格拼图</h1>
 </header>
 
 <main>
@@ -193,7 +178,7 @@
   <fieldset>
     <legend>拼图预览（点击格子选源）</legend>
     <div class="mosaic-wrap">
-      <canvas id="mosaicCanvas" width="720" height="480"></canvas>
+      <canvas id="mosaicCanvas" width="800" height="480"></canvas>
     </div>
   </fieldset>
 
@@ -205,7 +190,7 @@
       <button type="button" id="downloadBtn">下载 BIN</button>
     </div>
     <div class="info">
-      每格可选：SD 背景 / Flash 背景 / SD BIN / Flash BIN / 基础色 / 伪色。
+      每格可选：SD/Flash 背景图、SD/Flash BIN，或基础色（黑/白）。
       保存背景时会询问存到 SD 还是 Flash。
     </div>
   </fieldset>
@@ -241,47 +226,36 @@
 (function(){
 'use strict';
 
-const W = 720, H = 480, FRAME_BYTES = 172800;
-const THUMB_W = 360, THUMB_H = 240;
-const THUMB_BYTES = (THUMB_W * THUMB_H) / 2;
+const W = 800, H = 480, FRAME_BYTES = W * H / 8; // 48000
+const THUMB_W = 400, THUMB_H = 240;
+const THUMB_BYTES = (THUMB_W * THUMB_H) / 8; // 12000
 
-/* ★ 生成缩略图 */
+/* 1bpp 缩略图生成：48000 -> 12000 */
 function generateThumb(bin){
-  var tw = THUMB_W, th = THUMB_H;
-  var thumb = new Uint8Array(tw * th / 2);
-  for (var ty = 0; ty < th; ty++){
+  var thumb = new Uint8Array(THUMB_BYTES);
+  var srcRowBytes = W >> 3; // 100
+  var dstRowBytes = THUMB_W >> 3; // 50
+
+  for (var ty = 0; ty < THUMB_H; ty++){
     var sy = ty * 2;
-    var srcBase = sy * 360;
-    var dstBase = ty * 180;
-    for (var tx = 0; tx < tw; tx++){
+    var srcBase = sy * srcRowBytes;
+    var dstBase = ty * dstRowBytes;
+
+    for (var tx = 0; tx < THUMB_W; tx++){
       var sx = tx * 2;
-      var b = bin[srcBase + (sx >> 1)];
-      var nib = (b >> 4) & 0xF;
-      if (tx & 1) thumb[dstBase + (tx >> 1)] |= nib;
-      else        thumb[dstBase + (tx >> 1)]  = (nib << 4);
+      var b = bin[srcBase + (sx >> 3)];
+      var bit = (b >> (7 - (sx & 7))) & 1;
+      if (bit){
+        thumb[dstBase + (tx >> 3)] |= (0x80 >> (tx & 7));
+      }
     }
   }
   return thumb;
 }
 
-const INDEX_MAP = [0x0, 0x1, 0x2, 0x3, 0x5, 0x6];
-const IDX_REVERSE = {0x0:0, 0x1:1, 0x2:2, 0x3:3, 0x5:4, 0x6:5};
-const PALETTE_RGB = [
-  [0,0,0],[255,255,255],[255,255,0],
-  [255,0,0],[0,0,255],[0,255,0]
-];
-const PALETTE_NAME = ['黑','白','黄','红','蓝','绿'];
+const PALETTE_RGB = [[0,0,0], [255,255,255]];
+const PALETTE_NAME = ['黑', '白'];
 const MAX_COLS = 8, MAX_ROWS = 8, MAX_CELLS = 64;
-
-const BAYER4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
-const PSEUDO_COMBOS = [
-  [0,1,'灰'],[0,2,'暗黄'],[0,3,'暗红'],[0,4,'暗蓝'],[0,5,'暗绿'],
-  [1,2,'浅黄'],[1,3,'浅粉'],[1,4,'浅蓝'],[1,5,'浅绿'],
-  [2,3,'橙'],[2,4,'深绿'],[2,5,'黄绿'],
-  [3,4,'紫'],[3,5,'棕'],[4,5,'青']
-];
-const DENSITIES = [4, 8, 12];
-const DENSITY_LABELS = { 4:'25%', 8:'50%', 12:'75%' };
 
 const $ = id => document.getElementById(id);
 const statusEl = $('status');
@@ -318,15 +292,8 @@ function parseSrc(src){
   if (!src) return { kind: 'empty' };
   if (src.startsWith('solid:')){
     const idx = parseInt(src.slice(6));
-    if (idx >= 0 && idx <= 5) return { kind: 'solid', idx };
+    if (idx >= 0 && idx <= 1) return { kind: 'solid', idx };
     return { kind: 'empty' };
-  }
-  if (src.startsWith('pseudo:')){
-    const p = src.slice(7).split(',');
-    if (p.length !== 3) return { kind: 'empty' };
-    const a = parseInt(p[0]), b = parseInt(p[1]), d = parseInt(p[2]);
-    if (a < 0 || a > 5 || b < 0 || b > 5 || d <= 0) return { kind: 'empty' };
-    return { kind: 'pseudo', a, b, density: d };
   }
   const parts = src.split(':');
   if (parts.length === 3){
@@ -340,10 +307,6 @@ function parseSrc(src){
 
 function resolveColorIdx(spec, x, y){
   if (spec.kind === 'solid') return spec.idx;
-  if (spec.kind === 'pseudo'){
-    const t = BAYER4[y & 3][x & 3];
-    return t < spec.density ? spec.a : spec.b;
-  }
   return 1;
 }
 
@@ -404,14 +367,11 @@ async function renderMosaic(){
         continue;
       }
 
-      if (spec.kind === 'solid' || spec.kind === 'pseudo'){
+      if (spec.kind === 'solid'){
         const img = ctx.createImageData(w, h);
+        const c0 = PALETTE_RGB[spec.idx];
         for (let yy = 0; yy < h; yy++){
-          const gy = y0 + yy;
           for (let xx = 0; xx < w; xx++){
-            const gx = x0 + xx;
-            const ci = resolveColorIdx(spec, gx, gy);
-            const c0 = PALETTE_RGB[ci];
             const o = (yy * w + xx) * 4;
             img.data[o]   = c0[0];
             img.data[o+1] = c0[1];
@@ -430,20 +390,20 @@ async function renderMosaic(){
         continue;
       }
       const img = ctx.createImageData(w, h);
+      const srcRowBytes = W >> 3;
       for (let yy = 0; yy < h; yy++){
         const gy = y0 + yy;
-        const rowBase = gy * 360;
+        const rowBase = gy * srcRowBytes;
         for (let xx = 0; xx < w; xx++){
           const gx = x0 + xx;
-          const bIdx = rowBase + (gx >> 1);
+          const bIdx = rowBase + (gx >> 3);
           const bVal = bin[bIdx];
-          const nib = (gx & 1) ? (bVal & 0xF) : ((bVal >> 4) & 0xF);
-          const pi = IDX_REVERSE[nib];
-          const c0 = PALETTE_RGB[pi !== undefined ? pi : 0];
+          const bit = (bVal >> (7 - (gx & 7))) & 1;
+          const color = bit ? 0 : 255;
           const o = (yy * w + xx) * 4;
-          img.data[o]   = c0[0];
-          img.data[o+1] = c0[1];
-          img.data[o+2] = c0[2];
+          img.data[o]   = color;
+          img.data[o+1] = color;
+          img.data[o+2] = color;
           img.data[o+3] = 255;
         }
       }
@@ -479,20 +439,21 @@ function applyGridFromSelect(){
 
 function makeThumbImageData(bin, w, h){
   const img = new ImageData(w, h);
-  const sx = 720 / w, sy = 480 / h;
+  const sx = W / w, sy = H / h;
   const d = img.data;
+  const srcRowBytes = W >> 3;
+
   for (let yy = 0; yy < h; yy++){
     const gy = Math.floor(yy * sy);
-    const rowBase = gy * 360;
+    const rowBase = gy * srcRowBytes;
     for (let xx = 0; xx < w; xx++){
       const gx = Math.floor(xx * sx);
-      const bIdx = rowBase + (gx >> 1);
+      const bIdx = rowBase + (gx >> 3);
       const bVal = bin[bIdx];
-      const nib = (gx & 1) ? (bVal & 0xF) : ((bVal >> 4) & 0xF);
-      const pi = IDX_REVERSE[nib];
-      const c = PALETTE_RGB[pi !== undefined ? pi : 0];
+      const bit = (bVal >> (7 - (gx & 7))) & 1;
+      const color = bit ? 0 : 255;
       const o = (yy * w + xx) * 4;
-      d[o] = c[0]; d[o+1] = c[1]; d[o+2] = c[2]; d[o+3] = 255;
+      d[o] = color; d[o+1] = color; d[o+2] = color; d[o+3] = 255;
     }
   }
   return img;
@@ -501,7 +462,7 @@ function makeThumbImageData(bin, w, h){
 async function getThumb(spec){
   if (thumbCache[spec.src]) return thumbCache[spec.src];
   const bin = await loadSourceBin(spec);
-  const img = makeThumbImageData(bin, 80, 53);
+  const img = makeThumbImageData(bin, 80, 48);
   thumbCache[spec.src] = img;
   return img;
 }
@@ -517,7 +478,7 @@ function makeFilePickerItem(spec, label, note){
 
   const thumb = document.createElement('canvas');
   thumb.className = 'picker-thumb';
-  thumb.width = 80; thumb.height = 53;
+  thumb.width = 80; thumb.height = 48;
   item.appendChild(thumb);
 
   const info = document.createElement('div');
@@ -560,7 +521,7 @@ function makeFilePickerItem(spec, label, note){
 
 function makeSolidCell(idx){
   const cell = document.createElement('div');
-  cell.className = 'solid-cell' + (idx === 1 ? ' white-cell' : '');
+  cell.className = 'solid-cell' + (idx === 1 ? ' white-cell' : ' black-cell');
   const c = PALETTE_RGB[idx];
   cell.style.background = 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
   cell.textContent = PALETTE_NAME[idx];
@@ -569,41 +530,6 @@ function makeSolidCell(idx){
     saveState(); renderMosaic();
     $('pickerModal').classList.remove('show');
     setStatus('格子 ' + (currentPickCell + 1) + ' = ' + PALETTE_NAME[idx], 'ok');
-  });
-  return cell;
-}
-
-function makePseudoCell(a, b, density, groupLabel){
-  const cell = document.createElement('div');
-  cell.className = 'pseudo-cell';
-  const cvs = document.createElement('canvas');
-  cvs.width = 32; cvs.height = 20;
-  const ctx = cvs.getContext('2d');
-  for (let y = 0; y < 20; y++){
-    for (let x = 0; x < 32; x++){
-      const t = BAYER4[y & 3][x & 3];
-      const ci = t < density ? a : b;
-      const c = PALETTE_RGB[ci];
-      ctx.fillStyle = 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
-      ctx.fillRect(x, y, 1, 1);
-    }
-  }
-  cell.appendChild(cvs);
-  const nameEl = document.createElement('span');
-  nameEl.className = 'name-label';
-  nameEl.textContent = groupLabel;
-  cell.appendChild(nameEl);
-  const dLabel = DENSITY_LABELS[density] || (density + '/16');
-  const densityEl = document.createElement('span');
-  densityEl.className = 'density-label';
-  densityEl.textContent = dLabel;
-  cell.appendChild(densityEl);
-  cell.title = groupLabel + ' ' + dLabel;
-  cell.addEventListener('click', () => {
-    cells[currentPickCell] = { src: 'pseudo:' + a + ',' + b + ',' + density };
-    saveState(); renderMosaic();
-    $('pickerModal').classList.remove('show');
-    setStatus('格子 ' + (currentPickCell + 1) + ' = ' + groupLabel + ' ' + dLabel, 'ok');
   });
   return cell;
 }
@@ -663,30 +589,20 @@ async function openPicker(cellIdx){
 
   const solidHdr = document.createElement('div');
   solidHdr.className = 'picker-header';
-  solidHdr.textContent = '基础色（6）';
+  solidHdr.textContent = '基础色（黑白）';
   list.appendChild(solidHdr);
   const solidGrid = document.createElement('div');
   solidGrid.className = 'solid-grid';
-  for (let i = 0; i < 6; i++) solidGrid.appendChild(makeSolidCell(i));
+  solidGrid.appendChild(makeSolidCell(0));
+  solidGrid.appendChild(makeSolidCell(1));
   list.appendChild(solidGrid);
-
-  const pseudoHdr = document.createElement('div');
-  pseudoHdr.className = 'picker-header';
-  pseudoHdr.textContent = '伪色（15 组 × 3 密度 = 45）';
-  list.appendChild(pseudoHdr);
-  const pseudoGrid = document.createElement('div');
-  pseudoGrid.className = 'pseudo-grid';
-  PSEUDO_COMBOS.forEach(([a, b, label]) => {
-    DENSITIES.forEach(d => pseudoGrid.appendChild(makePseudoCell(a, b, d, label)));
-  });
-  list.appendChild(pseudoGrid);
 
   $('pickerModal').classList.add('show');
 }
 
 function composeMosaic(){
-  const outIdx = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) outIdx[i] = 1;
+  const out = new Uint8Array(FRAME_BYTES);
+  const rowBytes = W >> 3;
 
   for (let r = 0; r < gridRows; r++){
     for (let c = 0; c < gridCols; c++){
@@ -697,10 +613,13 @@ function composeMosaic(){
       const x0 = colX[c], y0 = rowY[r];
       const x1 = colX[c + 1], y1 = rowY[r + 1];
 
-      if (spec.kind === 'solid' || spec.kind === 'pseudo'){
-        for (let yy = y0; yy < y1; yy++){
-          for (let xx = x0; xx < x1; xx++){
-            outIdx[yy * W + xx] = resolveColorIdx(spec, xx, yy);
+      if (spec.kind === 'solid'){
+        if (spec.idx === 0) { // 黑色
+          for (let y = y0; y < y1; y++){
+            const base = y * rowBytes;
+            for (let x = x0; x < x1; x++){
+              out[base + (x >> 3)] |= (0x80 >> (x & 7));
+            }
           }
         }
         continue;
@@ -708,24 +627,18 @@ function composeMosaic(){
 
       const bin = bgCache[spec.src];
       if (!bin) continue;
-      for (let yy = y0; yy < y1; yy++){
-        const rowBase = yy * 360;
-        for (let xx = x0; xx < x1; xx++){
-          const bIdx = rowBase + (xx >> 1);
-          const bVal = bin[bIdx];
-          const nib = (xx & 1) ? (bVal & 0xF) : ((bVal >> 4) & 0xF);
-          const pi = IDX_REVERSE[nib];
-          outIdx[yy * W + xx] = (pi !== undefined) ? pi : 1;
+
+      for (let y = y0; y < y1; y++){
+        const rowBase = y * rowBytes;
+        for (let x = x0; x < x1; x++){
+          const bVal = bin[rowBase + (x >> 3)];
+          const bit = (bVal >> (7 - (x & 7))) & 1;
+          if (bit){
+            out[rowBase + (x >> 3)] |= (0x80 >> (x & 7));
+          }
         }
       }
     }
-  }
-
-  const out = new Uint8Array(FRAME_BYTES);
-  for (let i = 0; i < W * H; i += 2){
-    const hi = INDEX_MAP[outIdx[i]];
-    const lo = INDEX_MAP[outIdx[i + 1]];
-    out[i >> 1] = (hi << 4) | lo;
   }
   return out;
 }
@@ -791,7 +704,6 @@ async function saveBg(){
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
 
-    // ★ 生成并上传 thumb
     try {
       const thumbBuf = generateThumb(bin);
       await fetch('/bgs/thumb_upload/' + nextIdx + '?storage=' + storage, {
@@ -811,7 +723,7 @@ async function saveBg(){
 
 async function displayToScreen(){
   const bin = composeMosaic();
-  setStatus('上传到屏幕，约 30~60 秒…', 'busy');
+  setStatus('上传到屏幕，约 2~5 秒…', 'busy');
   try {
     const r = await fetch('/upload', {
       method: 'POST',
@@ -832,7 +744,7 @@ function download(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'mosaic_' + Date.now() + '.bin';
+  a.download = 'mosaic_bw_' + Date.now() + '.bin';
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
   setStatus('已下载 ' + bin.length + ' 字节', 'ok');
@@ -840,7 +752,7 @@ function download(){
 
 function saveState(){
   try {
-    localStorage.setItem('e6-mosaic-v3', JSON.stringify({
+    localStorage.setItem('e6-mosaic-v4', JSON.stringify({
       cols: gridCols, rows: gridRows, cells: cells
     }));
   } catch(e) {}
@@ -848,8 +760,8 @@ function saveState(){
 
 function loadState(){
   try {
-    let raw = localStorage.getItem('e6-mosaic-v3');
-    if (!raw) raw = localStorage.getItem('e6-mosaic-v2');
+    let raw = localStorage.getItem('e6-mosaic-v4');
+    if (!raw) raw = localStorage.getItem('e6-mosaic-v3');
     const s = JSON.parse(raw);
     if (s && s.cols && s.rows && Array.isArray(s.cells)){
       const c = parseInt(s.cols), r = parseInt(s.rows);

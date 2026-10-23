@@ -1,14 +1,14 @@
-# web_server.py
+# web_server.py — 适配 SSD1677 黑白屏 (800x480, 1bpp)
 import socket
 import gc
 import os
 import json
 import network
-from jd7601 import JD7601
+import epd
 
-EPD = JD7601()
-FRAME_BYTES = 720 * 480 // 2
-CHUNK = 360 * 11
+FRAME_BYTES = 800 * 480 // 8  # 48000 字节
+
+CHUNK = 1024
 WWW_INDEX = "/www/index.html"
 WWW_CONVERT = "/www/converter.html"
 WWW_WIFI = "/www/wifi.html"
@@ -16,16 +16,15 @@ WWW_TEXT = "/www/text_panel.html"
 WWW_EDIT = "/www/bin_editor.html"
 WWW_MOSAIC = "/www/mosaic.html"
 
-THUMB_W = 360
+# 缩略图尺寸 (1bpp)
+THUMB_W = 400
 THUMB_H = 240
-THUMB_ROW_BYTES = THUMB_W // 2
+THUMB_ROW_BYTES = THUMB_W // 8
 THUMB_SIZE = THUMB_ROW_BYTES * THUMB_H
 
 MAX_BINS_SOFT = 10000
 MAX_BGS_SOFT = 10000
 MAX_NOTE_LEN = 200
-
-BOOT_CFG_PATH = '/boot_cfg.json'
 
 CORS_HEADERS = (
     b"Access-Control-Allow-Origin: *\r\n"
@@ -33,38 +32,33 @@ CORS_HEADERS = (
     b"Access-Control-Allow-Headers: Content-Type\r\n"
 )
 
-COLOR_MAP = {
-    "black": 0x00, "white": 0x11, "yellow": 0x22,
-    "red": 0x33, "blue": 0x55, "green": 0x66,
-}
-
 MIME_MAP = {
     ".html": b"text/html; charset=utf-8",
-    ".htm":  b"text/html; charset=utf-8",
-    ".js":   b"application/javascript; charset=utf-8",
-    ".css":  b"text/css; charset=utf-8",
+    ".htm": b"text/html; charset=utf-8",
+    ".js": b"application/javascript; charset=utf-8",
+    ".css": b"text/css; charset=utf-8",
     ".json": b"application/json; charset=utf-8",
-    ".png":  b"image/png",
-    ".jpg":  b"image/jpeg",
-    ".svg":  b"image/svg+xml",
-    ".ico":  b"image/x-icon",
-    ".bin":  b"application/octet-stream",
-    ".idx":  b"application/json; charset=utf-8",
-    ".map":  b"text/plain; charset=utf-8",
+    ".png": b"image/png",
+    ".jpg": b"image/jpeg",
+    ".svg": b"image/svg+xml",
+    ".ico": b"image/x-icon",
+    ".bin": b"application/octet-stream",
+    ".idx": b"application/json; charset=utf-8",
+    ".map": b"text/plain; charset=utf-8",
     ".thumb": b"application/octet-stream",
 }
 
 ROUTE_MAP = {
-    "/":            WWW_INDEX,
-    "/index":       WWW_INDEX,
-    "/index.html":  WWW_INDEX,
-    "/convert":     WWW_CONVERT,
-    "/edit":        WWW_EDIT,
-    "/edit.html":   WWW_EDIT,
-    "/wifi":        WWW_WIFI,
-    "/text":        WWW_TEXT,
-    "/text.html":   WWW_TEXT,
-    "/mosaic":      WWW_MOSAIC,
+    "/": WWW_INDEX,
+    "/index": WWW_INDEX,
+    "/index.html": WWW_INDEX,
+    "/convert": WWW_CONVERT,
+    "/edit": WWW_EDIT,
+    "/edit.html": WWW_EDIT,
+    "/wifi": WWW_WIFI,
+    "/text": WWW_TEXT,
+    "/text.html": WWW_TEXT,
+    "/mosaic": WWW_MOSAIC,
     "/mosaic.html": WWW_MOSAIC,
 }
 
@@ -79,11 +73,12 @@ def _mime_of(path):
 def _send(conn, status, body, content_type=b"text/plain"):
     body = body if isinstance(body, bytes) else str(body).encode()
     headers = (
-        b"HTTP/1.1 " + status + b"\r\n"
-        b"Content-Type: " + content_type + b"\r\n"
-        b"Content-Length: " + str(len(body)).encode() + b"\r\n"
-        + CORS_HEADERS +
-        b"Connection: close\r\n\r\n"
+            b"HTTP/1.1 " + status + b"\r\n"
+                                    b"Content-Type: " + content_type + b"\r\n"
+                                                                       b"Content-Length: " + str(
+        len(body)).encode() + b"\r\n"
+            + CORS_HEADERS +
+            b"Connection: close\r\n\r\n"
     )
     conn.send(headers)
     if body:
@@ -108,7 +103,7 @@ def _send_file(conn, path, content_type=None, cache_seconds=600):
     conn.send(
         b"HTTP/1.1 200 OK\r\n"
         b"Content-Type: " + content_type + b"\r\n"
-        b"Content-Length: " + str(size).encode() + b"\r\n"
+                                           b"Content-Length: " + str(size).encode() + b"\r\n"
         + cache_line + CORS_HEADERS +
         b"Connection: close\r\n\r\n"
     )
@@ -135,9 +130,8 @@ def _send_file(conn, path, content_type=None, cache_seconds=600):
         print("[WEB] send_file error:", e)
 
 
-# ★ 修复 + 优先 .thumb 文件
 def _send_thumb(conn, src_path, cache_seconds=3600):
-    # 快速路径：优先用预生成的 {slot}.thumb
+    """针对 1bpp (800x480) 生成 1bpp (400x240) 缩略图"""
     if src_path.endswith('.bin'):
         thumb_path = src_path[:-4] + '.thumb'
     else:
@@ -152,7 +146,6 @@ def _send_thumb(conn, src_path, cache_seconds=3600):
     except OSError:
         pass
 
-    # 慢速路径：从 bin 实时降采样（带 readinto 修复）
     try:
         size_src = os.stat(src_path)[6]
     except OSError:
@@ -174,47 +167,34 @@ def _send_thumb(conn, src_path, cache_seconds=3600):
         b"Connection: close\r\n\r\n"
     )
 
-    SRC_ROW_BYTES = 360
-    BLOCK_H = 8
-
+    SRC_ROW_BYTES = 100  # 800 / 8
     try:
-        src_buf = bytearray(16 * SRC_ROW_BYTES)
-        out_block = bytearray(BLOCK_H * THUMB_ROW_BYTES)
-        mv_src = memoryview(src_buf)   # ★ 关键修复：memoryview 才是可写视图
+        # 逐行处理，每 2 行原图取 1 行，每 2 个像素取 1 个
+        out_block = bytearray(THUMB_SIZE)
         with open(src_path, "rb") as f:
-            for ty_base in range(0, THUMB_H, BLOCK_H):
-                block_h = min(BLOCK_H, THUMB_H - ty_base)
-                src_rows = block_h * 2
-                want = src_rows * SRC_ROW_BYTES
-                n = f.readinto(mv_src[:want])   # ★ 修复：传入 memoryview 切片
-                if n is None or n < want:
+            for ty in range(THUMB_H):
+                # 跳过错过的行
+                f.seek((ty * 2) * SRC_ROW_BYTES)
+                src_row = f.read(SRC_ROW_BYTES)
+                if len(src_row) < SRC_ROW_BYTES:
                     break
 
-                blk_len = block_h * THUMB_ROW_BYTES
+                dst_row_off = ty * THUMB_ROW_BYTES
+                for tx in range(THUMB_W):
+                    # 取原图每 2 个像素的第一个
+                    sx = tx * 2
+                    byte_val = src_row[sx >> 3]
+                    bit = (byte_val >> (7 - (sx & 7))) & 0x01
+                    if bit:
+                        out_block[dst_row_off + (tx >> 3)] |= (0x80 >> (tx & 7))
 
-                for ty_local in range(block_h):
-                    sy = ty_local * 2
-                    src_row_off = sy * SRC_ROW_BYTES
-                    dst_row_off = ty_local * THUMB_ROW_BYTES
-                    for tx in range(THUMB_W):
-                        sx = tx * 2
-                        src_byte = src_buf[src_row_off + (sx >> 1)]
-                        if sx & 1:
-                            nib = src_byte & 0xF
-                        else:
-                            nib = (src_byte >> 4) & 0xF
-                        if tx & 1:
-                            out_block[dst_row_off + (tx >> 1)] |= nib
-                        else:
-                            out_block[dst_row_off + (tx >> 1)] = (nib << 4)
-
-                mv = memoryview(out_block)
-                off = 0
-                while off < blk_len:
-                    sent = conn.send(mv[off:blk_len])
-                    if sent is None or sent <= 0:
-                        return
-                    off += sent
+        mv = memoryview(out_block)
+        off = 0
+        while off < THUMB_SIZE:
+            sent = conn.send(mv[off:])
+            if sent is None or sent <= 0:
+                return
+            off += sent
     except Exception as e:
         print("[WEB] thumb error:", e)
 
@@ -265,7 +245,7 @@ def _url_decode(s):
         c = s[i]
         if c == '%' and i + 2 < n:
             try:
-                b = int(s[i+1:i+3], 16)
+                b = int(s[i + 1:i + 3], 16)
                 out.append(b)
                 i += 3
                 continue
@@ -307,35 +287,28 @@ def _extract_query_param(headers, key):
     return ""
 
 
-def _display_solid(byte_val):
-    EPD.init()
-    EPD.begin_frame()
-    row = bytes([byte_val]) * 360
-    for _ in range(480):
-        EPD.write_chunk(row)
-    EPD.end_frame()
-    EPD.sleep()
-
-
 def _handle_upload(conn, body_prefix):
-    EPD.init()
-    EPD.begin_frame()
+    """接收 48000 字节黑白数据，直接写入 epd.buffer 并刷新"""
     received = 0
+    buf = epd.buffer
+
     if body_prefix:
         n = min(len(body_prefix), FRAME_BYTES)
-        EPD.write_chunk(body_prefix[:n])
+        buf[:n] = body_prefix[:n]
         received += n
-        gc.collect()
+
     while received < FRAME_BYTES:
         chunk = conn.recv(min(CHUNK, FRAME_BYTES - received))
         if not chunk:
             break
-        EPD.write_chunk(chunk)
+        buf[received:received + len(chunk)] = chunk
         received += len(chunk)
         gc.collect()
-    EPD.end_frame()
-    EPD.sleep()
-    return received
+
+    if received == FRAME_BYTES:
+        epd.show()
+        return received
+    return 0
 
 
 def _ensure_dir(path):
@@ -422,7 +395,6 @@ def _scan_dir_slots(dir_path, meta_path, soft_limit):
             st = os.stat(dir_path + "/" + name)
         except OSError:
             continue
-        # 检查 .thumb 是否存在
         has_thumb = False
         try:
             if os.stat(dir_path + "/" + str(idx) + ".thumb")[6] == THUMB_SIZE:
@@ -488,8 +460,6 @@ def _statvfs_free(path):
         return None
 
 
-# ---------- 缩略图上传 ----------
-
 def _thumb_path_for(storage, kind, slot):
     import sd_helper
     bins_dir, bgs_dir = sd_helper.get_storage_paths(storage)
@@ -537,16 +507,22 @@ def _handle_thumb_upload(conn, kind, slot, headers, body_prefix):
             received += len(chunk)
         f.close()
     except Exception as e:
-        try: f.close()
-        except: pass
-        try: os.remove(p)
-        except: pass
+        try:
+            f.close()
+        except:
+            pass
+        try:
+            os.remove(p)
+        except:
+            pass
         _send(conn, b"500 Internal Server Error", str(e).encode())
         return
 
     if received != THUMB_SIZE:
-        try: os.remove(p)
-        except: pass
+        try:
+            os.remove(p)
+        except:
+            pass
         _send(conn, b"400 Bad Request",
               ("expected %d, got %d" % (THUMB_SIZE, received)).encode())
         return
@@ -555,7 +531,6 @@ def _handle_thumb_upload(conn, kind, slot, headers, body_prefix):
 
 
 def _remove_thumb_for(bin_path):
-    """删除与 bin 同目录的 .thumb"""
     if not bin_path or not bin_path.endswith('.bin'):
         return
     try:
@@ -563,60 +538,6 @@ def _remove_thumb_for(bin_path):
     except OSError:
         pass
 
-
-# ---------- 开机指定 bin ----------
-
-def _handle_boot_bin_get(conn):
-    try:
-        with open(BOOT_CFG_PATH, 'r') as f:
-            cfg = json.load(f)
-            if not isinstance(cfg, dict):
-                cfg = {}
-    except (OSError, ValueError):
-        cfg = {}
-
-    storage = cfg.get('storage')
-    index = cfg.get('index')
-    if storage not in ('sd', 'flash'):
-        storage = None
-    if not isinstance(index, int) or index < 0:
-        index = None
-
-    _send_json(conn, {
-        "storage": storage,
-        "index": index,
-        "defined": (storage is not None and index is not None),
-    })
-
-
-def _handle_boot_bin_set(conn, headers, body_prefix):
-    try:
-        body = _read_body(conn, headers, body_prefix)
-        data = json.loads(body) if body else {}
-    except Exception as e:
-        _send(conn, b"400 Bad Request", str(e).encode())
-        return
-
-    storage = data.get('storage')
-    index = data.get('index')
-
-    if storage not in ('sd', 'flash') or not isinstance(index, int) or index < 0:
-        try:
-            os.remove(BOOT_CFG_PATH)
-            _send(conn, b"200 OK", b"cleared")
-        except OSError:
-            _send(conn, b"200 OK", b"cleared")
-        return
-
-    try:
-        with open(BOOT_CFG_PATH, 'w') as f:
-            json.dump({'storage': storage, 'index': index}, f)
-        _send(conn, b"200 OK", b"OK")
-    except OSError as e:
-        _send(conn, b"500 Internal Server Error", str(e).encode())
-
-
-# ---------- bins ----------
 
 def _handle_bins_list(conn):
     try:
@@ -659,7 +580,7 @@ def _handle_bin_delete(conn, slot, headers):
     if p is None:
         _send(conn, b"404 Not Found", b"not found")
         return
-    _remove_thumb_for(p)   # ★ 删除 thumb
+    _remove_thumb_for(p)
     try:
         os.remove(p)
     except OSError:
@@ -717,23 +638,14 @@ def _receive_to_file(conn, path, body_prefix):
 
 def _display_bin_file(path):
     try:
-        EPD.init()
-        EPD.begin_frame()
         with open(path, "rb") as f:
-            while True:
-                chunk = f.read(4096)
-                if not chunk:
-                    break
-                EPD.write_chunk(chunk)
-                gc.collect()
-        EPD.end_frame()
-        EPD.sleep()
-        return (True, "")
+            data = f.read(FRAME_BYTES)
+            if len(data) == FRAME_BYTES:
+                epd.buffer[:] = data
+                epd.show()
+                return (True, "")
+            return (False, "size mismatch")
     except Exception as e:
-        try: EPD.end_frame()
-        except Exception: pass
-        try: EPD.sleep()
-        except Exception: pass
         return (False, str(e))
 
 
@@ -754,7 +666,7 @@ def _handle_bin_upload(conn, slot, headers, body_prefix):
     if not ok:
         _send(conn, b"507 Insufficient Storage", err.encode())
         return
-    _remove_thumb_for(path)   # ★ bin 覆盖 → thumb 失效
+    _remove_thumb_for(path)
     note = _extract_query_param(headers, "note")
     if note:
         _set_note(bins_dir + "/meta.json", slot, note)
@@ -836,8 +748,6 @@ def _handle_bin_note(conn, slot, headers, body_prefix):
     _set_note(meta, slot, note)
     _send(conn, b"200 OK", b"OK")
 
-
-# ---------- bgs ----------
 
 def _handle_bgs_list(conn):
     try:
@@ -936,8 +846,6 @@ def _handle_bg_note(conn, slot, headers, body_prefix):
     _send(conn, b"200 OK", b"OK")
 
 
-# ---------- 字体 ----------
-
 def _handle_fonts_list(conn):
     try:
         conn.settimeout(30)
@@ -950,7 +858,7 @@ def _handle_fonts_list(conn):
             b"HTTP/1.1 200 OK\r\n"
             b"Content-Type: application/json; charset=utf-8\r\n"
             b"Content-Length: " + str(size).encode() + b"\r\n"
-            b"Cache-Control: no-store\r\n"
+                                                       b"Cache-Control: no-store\r\n"
             + CORS_HEADERS +
             b"Connection: close\r\n\r\n"
         )
@@ -1015,7 +923,7 @@ def _handle_fonts_list(conn):
 
     scan('/www/fonts', 'flash')
     if sd_helper.is_sd_active():
-        scan(sd_helper.SD_MOUNT + '/e6/fonts', 'sd')
+        scan(sd_helper.SD_MOUNT + '/fonts', 'sd')
     gc.collect()
     out.sort(key=lambda x: (x['storage'] != 'flash', x['family'], x['size']))
     _send_json(conn, {"fonts": out})
@@ -1035,15 +943,13 @@ def _handle_fonts_get(conn, headers):
         if not sd_helper.is_sd_active():
             _send(conn, b"400 Bad Request", b"sd not mounted")
             return
-        path = sd_helper.SD_MOUNT + '/e6/fonts/' + name + '.bin'
+        path = sd_helper.SD_MOUNT + '/fonts/' + name + '.bin'
     else:
         path = '/www/fonts/' + name + '.bin'
     _send_file(conn, path,
                content_type=b"application/octet-stream",
                cache_seconds=3600)
 
-
-# ---------- /text/render ----------
 
 def _handle_text_render(conn, headers, body_prefix):
     import gc as _gc
@@ -1065,104 +971,36 @@ def _handle_text_render(conn, headers, body_prefix):
         _gc.collect()
         print("[TEXT] parsed json, free=%d" % _gc.mem_free())
 
-        from text_renderer import (
-            render_full, render_and_display,
-            render_and_display_stream, _create_font_direct,
-        )
+        from text_renderer import render_and_display_bw
 
         size = int(params.get("size", 32))
-        font_path = params.get("font_path") or None
         font_paths = params.get("font_paths") or None
         per_char = params.get("per_char")
-
-        default_key = '|'.join(font_paths) if font_paths else ''
-        extra_fonts = {}
-        if per_char:
-            fp_set = set()
-            for v in per_char.values():
-                if isinstance(v, dict) and v.get('font_paths'):
-                    fp = v['font_paths']
-                    if fp:
-                        key = '|'.join(fp)
-                        if key == default_key:
-                            continue
-                        fp_set.add(key)
-
-            print("[TEXT] distinct extra fonts: %d" % len(fp_set))
-
-            MAX_EXTRA = 2
-            if len(fp_set) > MAX_EXTRA:
-                print("[TEXT] too many extra fonts, truncating to %d" % MAX_EXTRA)
-                fp_set = set(list(fp_set)[:MAX_EXTRA])
-
-            for key in fp_set:
-                fp = key.split('|')
-                f = _create_font_direct(fp)
-                if f:
-                    extra_fonts[key] = f
-                    _gc.collect()
-                    print("[TEXT] loaded extra: free=%d" % _gc.mem_free())
-
-        args = dict(
-            size=size,
-            direction=int(params.get("direction", 0)),
-            per_char=per_char,
-            default_style=params.get("default_style"),
-            align=params.get("align", "left"),
-            valign=params.get("valign", "top"),
-            line_height=float(params.get("line_height", 1.5)),
-            margin_top=int(params.get("margin_top", 20)),
-            margin_bottom=int(params.get("margin_bottom", 20)),
-            margin_left=int(params.get("margin_left", 20)),
-            margin_right=int(params.get("margin_right", 20)),
-            font_path=font_path,
-            font_paths=font_paths,
-            extra_fonts=extra_fonts,
-            line_extras=params.get("line_extras") or None,
-        )
         text = params.get("text", "")
-        dry_run = bool(params.get("dry_run", False))
-        stream = bool(params.get("stream", True))
-        background = params.get("background") or None
 
         try:
-            if dry_run:
-                bin_data = render_full(text, background=background, **args)
-                _send(conn, b"200 OK", bin_data,
-                      content_type=b"application/octet-stream")
-            elif stream:
-                try:
-                    conn.settimeout(300)
-                except Exception:
-                    pass
-                band = int(params.get("band_rows", 8))
+            conn.settimeout(300)
+        except Exception:
+            pass
 
-                _send_json(conn, {"ok": True, "mode": "stream",
-                                  "band_rows": band, "bg": background,
-                                  "extra_fonts": len(extra_fonts),
-                                  "started": True})
+        # 先返回响应，避免网页端长时间等待
+        _send_json(conn, {"ok": True, "mode": "stream", "started": True})
 
-                try:
-                    render_and_display_stream(EPD, text, band_rows=band,
-                                              background=background, **args)
-                except Exception as render_err:
-                    print("[TEXT] deferred render fail:", render_err)
-                    try:
-                        import sys as _sys
-                        _sys.print_exception(render_err)
-                    except Exception:
-                        pass
-            else:
-                render_and_display(EPD, text, background=background, **args)
-                _send_json(conn, {"ok": True, "mode": "buffered"})
-        finally:
-            for f in extra_fonts.values():
-                try: f.close()
-                except: pass
-            extra_fonts.clear()
-            _gc.collect()
-            print("[TEXT] end: free=%d" % _gc.mem_free())
-
+        try:
+            render_and_display_bw(
+                epd, text,
+                size=size,
+                font_paths=font_paths,
+                per_char=per_char,
+                **{k: v for k, v in params.items() if k not in ('text', 'size', 'font_paths', 'per_char')}
+            )
+        except Exception as render_err:
+            print("[TEXT] deferred render fail:", render_err)
+            try:
+                import sys as _sys
+                _sys.print_exception(render_err)
+            except Exception:
+                pass
     except MemoryError as e:
         free = _gc.mem_free()
         print("[TEXT] OOM! free=%d" % free)
@@ -1178,13 +1016,13 @@ def _handle_text_render(conn, headers, body_prefix):
                        b"500 Internal Server Error")
         except Exception:
             pass
+    finally:
+        _gc.collect()
 
-
-# ---------- 系统 / WiFi ----------
 
 def _system_status(conn):
     info = {
-        "ap":  {"active": False, "ip": None, "ssid": None},
+        "ap": {"active": False, "ip": None, "ssid": None},
         "sta": {"connected": False, "ip": None, "ssid": None, "rssi": None},
     }
     try:
@@ -1277,14 +1115,12 @@ def _wifi_delete(conn, headers, body_prefix):
         import wifi_manager
         cfg = wifi_manager.load_config()
         cfg["known_networks"] = [n for n in cfg.get("known_networks", [])
-                                  if n["ssid"] != ssid]
+                                 if n["ssid"] != ssid]
         wifi_manager.save_config(cfg)
         _send(conn, b"200 OK", b"OK")
     except Exception as e:
         _send(conn, b"500 Internal Server Error", str(e))
 
-
-# ---------- 静态文件 ----------
 
 def _serve_static(conn, headers):
     try:
@@ -1383,14 +1219,8 @@ def start_server():
                 )
                 continue
 
-            # boot bin
-            if headers.startswith(b"GET /boot/bin"):
-                _handle_boot_bin_get(conn)
-            elif headers.startswith(b"POST /boot/bin"):
-                _handle_boot_bin_set(conn, headers, body_prefix)
-
-            # thumb upload（★ 必须在 /bins/upload/ 之前）
-            elif headers.startswith(b"POST /bins/thumb_upload/"):
+            # thumb upload
+            if headers.startswith(b"POST /bins/thumb_upload/"):
                 slot = _parse_int_after(headers, b"/bins/thumb_upload/")
                 if slot is None:
                     _send(conn, b"400 Bad Request", b"bad slot")
@@ -1513,15 +1343,6 @@ def start_server():
                     _send_json(conn, {"sizes": list_available_sizes()})
                 except Exception as e:
                     _send_json(conn, {"sizes": [], "error": str(e)})
-
-            elif b"GET /color/" in headers:
-                name = headers.split(b"/color/")[1].split()[0].decode()
-                val = COLOR_MAP.get(name)
-                if val is None:
-                    _send(conn, b"404 Not Found", b"no color")
-                else:
-                    _display_solid(val)
-                    _send(conn, b"200 OK", b"OK")
 
             elif headers.startswith(b"GET /status"):
                 _system_status(conn)

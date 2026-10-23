@@ -29,7 +29,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 VERSION_V3 = 0x03
 VERSION_V4 = 0x04
-OUT_DIR = Path("esp/fonts")
+OUT_DIR = Path("esp/www/fonts")
 
 ALL_SIZES = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64, 72, 96]
 DEFAULT_SIZES = ",".join(str(s) for s in ALL_SIZES)

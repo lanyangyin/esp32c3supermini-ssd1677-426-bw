@@ -1,0 +1,25 @@
+{
+  "device_ip": "192.168.8.240",
+  "brush_size": 4,
+  "bg_color_idx": 1,
+  "font_size": 45,
+  "font_family": "Monospace",
+  "direction": "vertical-rl",
+  "align": "left",
+  "line_height_x10": 18,
+  "letter_spacing": 0,
+  "rotate": 9,
+  "current_tool": "pencil",
+  "current_color": {
+    "type": "basic",
+    "index": 0
+  },
+  "text_bold": false,
+  "text_italic": false,
+  "text_underline": false,
+  "text_content": "",
+  "content_locked": false,
+  "edit_locked": false,
+  "last_bin_path": "",
+  "last_save_dir": ""
+}
