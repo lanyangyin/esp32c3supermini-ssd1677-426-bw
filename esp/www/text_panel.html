@@ -304,7 +304,10 @@
     </label>
 
     <label>字体
-      <select id="fontFamilySelect"></select>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select id="fontFamilySelect" style="flex:1;"></select>
+        <button type="button" id="rebuildFontsBtn" style="padding:0 10px;min-height:28px;font-size:11px;flex-shrink:0;" title="重新扫描设备存储中的字体文件">重建</button>
+      </div>
     </label>
 
     <div class="row-2">
@@ -472,7 +475,6 @@ let currentFontGroupIdx = 0;
 let currentSize = 32;
 let direction = 0;
 
-// 去除颜色，固定黑白
 const FG_COLOR = { type:'solid', idx:0 };
 const BG_COLOR = { type:'solid', idx:1 };
 const OUTLINE_COLOR = null;
@@ -836,71 +838,6 @@ function getCurrentFontInfo(){
 }
 function fontKey(f){ return f.storage + ':' + f.family + ':' + f.size; }
 function fontKeyOfGroupSize(storage, family, size){ return storage + ':' + family + ':' + size; }
-
-/* V4 字模解析、加载逻辑保留 */
-function parseV4Chunk(buf){
-  const view = new DataView(buf);
-  const version = view.getUint8(0);
-  if (version !== 0x04) throw new Error('不是 v4');
-  const flags = view.getUint8(1);
-  const count = view.getUint16(2, true);
-  const maxH = view.getUint16(4, true);
-  const isUnicode = !!(flags & 1);
-  const index = {};
-  let off = 6;
-  for (let i = 0; i < count; i++){
-    const code = (view.getUint8(off) << 8) | view.getUint8(off + 1);
-    const gOff = (view.getUint8(off + 2) << 16) |
-                 (view.getUint8(off + 3) << 8) |
-                 view.getUint8(off + 4);
-    const w = view.getUint8(off + 5);
-    index[code] = [gOff, w];
-    off += 6;
-  }
-  return { maxH, isUnicode, index, buf };
-}
-
-function parseChunk(buf, glyphs){
-  const view = new DataView(buf);
-  const version = view.getUint8(0);
-  let count, maxH, isUnicode;
-  if (version === 0x02){
-    count = view.getUint8(1);
-    maxH = view.getUint16(2, true);
-    isUnicode = false;
-  } else if (version === 0x03){
-    const flags = view.getUint8(1);
-    count = view.getUint16(2, true);
-    maxH = view.getUint16(4, true);
-    isUnicode = !!(flags & 1);
-  } else {
-    throw new Error('v2/v3 字模版本 ' + version + ' 不支持');
-  }
-  let off = 6;
-  for (let i = 0; i < count; i++){
-    let code;
-    if (isUnicode){
-      code = (view.getUint8(off) << 8) | view.getUint8(off + 1);
-      off += 2;
-    } else {
-      code = view.getUint8(off);
-      off += 1;
-    }
-    const w = view.getUint8(off);
-    const h = view.getUint8(off + 1);
-    off += 2;
-    if (w === 0 || h === 0){
-      if (!(code in glyphs)) glyphs[code] = null;
-      continue;
-    }
-    const rb = (w + 7) >> 3;
-    if (!(code in glyphs)){
-      glyphs[code] = { w, h, data: new Uint8Array(buf, off, rb * h) };
-    }
-    off += rb * h;
-  }
-  return { maxH, isUnicode };
-}
 
 /* 省略部分暂未用到的代码，核心加载逻辑通过 API 调用设备完成 */
 
@@ -1637,6 +1574,51 @@ function bindEvents(){
       }
     };
     input.click();
+  });
+
+  // ★ 绑定重建字体索引按钮
+  $('rebuildFontsBtn').addEventListener('click', async () => {
+    if (!confirm('确定要重新扫描并构建字体索引吗？\n这可能需要几秒钟。')) return;
+
+    const btn = $('rebuildFontsBtn');
+    btn.disabled = true;
+
+    // 借用字体加载遮罩层
+    beginLoadSession('重建字体索引', 1);
+    updateLoadProgress(0, 0, 0);
+
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 30000);
+      const resp = await fetch('/fonts/rebuild', { method: 'POST', signal: ctrl.signal });
+      clearTimeout(t);
+
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || '未知错误');
+
+      finishLoadSession();
+      setStatus('字体索引重建成功（' + (data.size || 0) + ' 字节）', 'ok');
+
+      // 重新加载字体列表
+      const fonts = await loadFontsList();
+      if (fonts.length) {
+        fontGroups = buildFontGroups(fonts);
+        rebuildFontFamilySelect();
+        currentFontGroupIdx = 0;
+        currentSize = pickSize(fontGroups[0], 32);
+        rebuildSizeSelect();
+        $('fontFamilySelect').value = '0';
+        scheduleRender();
+      } else {
+         setStatus('重建成功，但未扫描到任何字体', 'err');
+      }
+    } catch (e) {
+      failLoadSession(e.message);
+      setStatus('重建失败：' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
   });
 }
 

@@ -5,6 +5,7 @@ import os
 import json
 import network
 import epd
+import time  # ★ 新增 time 用于 sleep
 
 FRAME_BYTES = 800 * 480 // 8  # 48000 字节
 
@@ -929,6 +930,27 @@ def _handle_fonts_list(conn):
     _send_json(conn, {"fonts": out})
 
 
+# ★ 新增：API 触发重建字体索引
+def _handle_fonts_rebuild(conn):
+    print("[WEB] /fonts/rebuild 触发重建字体索引...")
+    try:
+        import build_font_index
+        ok = build_font_index.build(verbose=False)
+        if ok:
+            try:
+                st = os.stat('/fonts_index.json')
+                _send_json(conn, {"ok": True, "size": st[6]})
+            except OSError:
+                _send_json(conn, {"ok": True})
+        else:
+            _send_json(conn, {"ok": False, "error": "build_font_index.build() failed"},
+                       b"500 Internal Server Error")
+    except Exception as e:
+        print("[WEB] fonts rebuild error:", e)
+        _send_json(conn, {"ok": False, "error": str(e)},
+                   b"500 Internal Server Error")
+
+
 def _handle_fonts_get(conn, headers):
     storage = _extract_query_param(headers, 'storage') or 'flash'
     name = _extract_query_param(headers, 'name')
@@ -1180,16 +1202,48 @@ def start_server():
         _ensure_dir("/bins")
         _ensure_dir("/bgs")
 
+    # ★ 检查字体索引，若缺失则自动构建
     try:
         st = os.stat('/fonts_index.json')
         print('[WEB] /fonts_index.json: %d 字节' % st[6])
     except OSError:
-        print('[WEB] 警告: /fonts_index.json 不存在')
+        print('[WEB] /fonts_index.json 不存在，正在自动构建（可能需要几秒钟）...')
+        try:
+            import build_font_index
+            build_font_index.build(verbose=False)
+            st = os.stat('/fonts_index.json')
+            print('[WEB] 自动构建完成: %d 字节' % st[6])
+        except Exception as e:
+            print('[WEB] 自动构建失败:', e)
+
+    # 等待一下，确保网络接口彻底就绪（构建过程可能打断了接口状态）
+    time.sleep(1)
 
     addr = socket.getaddrinfo("0.0.0.0", 80)[0][-1]
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(addr)
+
+    # ★ 增加 bind 重试机制
+    bound = False
+    for attempt in range(10):
+        try:
+            s.bind(addr)
+            bound = True
+            break
+        except OSError as e:
+            print("[WEB] bind attempt %d failed: %s" % (attempt + 1, e))
+            time.sleep_ms(500)
+            # 如果 socket 彻底损坏，尝试重建
+            try:
+                s.close()
+            except Exception:
+                pass
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    if not bound:
+        raise OSError("无法绑定 80 端口，请检查网络状态或重启设备")
+
     s.listen(5)
 
     try:
@@ -1328,6 +1382,8 @@ def start_server():
             # fonts
             elif headers.startswith(b"GET /fonts/list"):
                 _handle_fonts_list(conn)
+            elif headers.startswith(b"GET /fonts/rebuild") or headers.startswith(b"POST /fonts/rebuild"):
+                _handle_fonts_rebuild(conn)  # ★ 挂载新 API
             elif headers.startswith(b"GET /fonts/get"):
                 _handle_fonts_get(conn, headers)
 
