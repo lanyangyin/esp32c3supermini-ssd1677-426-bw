@@ -1,0 +1,2761 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASCII 文本编辑 - E6</title>
+<style>
+  :root{
+    color-scheme:dark;
+    --ink:#f1f1ed; --muted:#a5a49d; --subtle:#7f7e77;
+    --line:#34332f; --line-strong:#4a4943;
+    --panel:#252420; --panel-deep:#1d1c19;
+    --paper:#2d2c27; --paper-raised:#35342f;
+    --accent:#c9cac5; --accent-strong:#f2f2ed;
+    --focus:#75c7bd; --danger:#f28b82;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;background:#151512;color:var(--ink);
+    font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;
+    padding-bottom:calc(60px + env(safe-area-inset-bottom,0px));
+  }
+  header{
+    padding:10px 14px;border-bottom:1px solid var(--line);background:#1b1a17;
+    display:flex;align-items:center;justify-content:space-between;min-height:48px;
+    position:sticky;top:0;z-index:10;
+  }
+  header h1{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+  header .brand{display:inline-block;width:10px;height:14px;border:2px solid var(--accent-strong)}
+  main{max-width:920px;margin:0 auto;padding:12px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:760px){.grid{grid-template-columns:1fr}}
+  fieldset{
+    border:1px solid var(--line);border-radius:6px;margin:0;padding:10px;
+    background:var(--panel);min-width:0;
+  }
+  legend{
+    padding:0 6px;margin:0 0 0 -2px;font-size:11px;color:var(--subtle);
+    text-transform:uppercase;letter-spacing:.08em;font-weight:760;
+  }
+  label{display:grid;gap:3px;color:var(--muted);font-size:11px;font-weight:650;min-width:0}
+  select,input[type=text],input[type=number],textarea{
+    width:100%;min-height:28px;padding:4px 6px;
+    border:1px solid var(--line);border-radius:4px;
+    background:var(--panel-deep);color:var(--ink);font:inherit;font-size:12px;
+  }
+  textarea{min-height:72px;resize:vertical;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace}
+  button{
+    padding:8px 12px;border:1px solid var(--line-strong);border-radius:4px;
+    background:var(--paper-raised);color:var(--ink);font:inherit;font-size:12px;
+    font-weight:700;cursor:pointer;
+  }
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.primary{background:var(--accent-strong);color:#1a1a1a;border-color:var(--accent-strong)}
+  button.primary:hover:not(:disabled){background:#fff}
+  .btn-row{display:flex;gap:6px}
+  .btn-row button{flex:1}
+  .info{font-size:11px;color:var(--subtle);line-height:1.4;margin-top:4px}
+  .status{
+    padding:8px 10px;border-radius:4px;font-size:12px;background:#1a1a17;
+    color:var(--muted);white-space:pre-wrap;margin-top:10px;
+  }
+  .status.ok{color:#7dda7d;background:#132013}
+  .status.err{color:var(--danger);background:#2a1414}
+  .status.busy{color:#7db8da;background:#132033}
+
+  .color-mode{display:flex;gap:3px;margin-bottom:6px}
+  .color-mode button{
+    flex:1;padding:6px 4px;font-size:11px;font-weight:600;
+    background:var(--paper-raised);color:var(--muted);border:1px solid var(--line);
+  }
+  .color-mode button.active{
+    background:var(--accent-strong);color:#1a1a1a;border-color:var(--accent-strong);
+  }
+  .color-mode button.clear-outline.active{
+    background:#ffb4a8;color:#6a2a2a;border-color:#ffb4a8;
+  }
+  .color-scroll{
+    max-height:170px;overflow-y:auto;overflow-x:hidden;
+    border:1px solid var(--line);border-radius:4px;padding:4px;
+    background:var(--panel-deep);scrollbar-width:thin;
+  }
+  .color-scroll::-webkit-scrollbar{width:6px}
+  .color-scroll::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px}
+  .color-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;margin-bottom:4px}
+  .color-grid.pseudo{grid-template-columns:repeat(3,1fr)}
+  .color-cell{
+    position:relative;border-radius:3px;border:1px solid transparent;
+    cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;
+  }
+  .color-cell.basic{height:26px}
+  .color-cell.pseudo{height:22px}
+  .color-cell:hover{border-color:var(--muted)}
+  .color-cell.active{border-color:var(--focus);border-width:2px}
+  .color-cell .swatch{position:absolute;inset:0}
+  .color-cell canvas.swatch{width:100%;height:100%;image-rendering:pixelated}
+  .color-cell .label{
+    position:relative;z-index:1;font-size:9px;color:#fff;
+    text-shadow:0 0 2px #000,0 0 2px #000;font-weight:700;
+    pointer-events:none;text-align:center;line-height:1;
+  }
+
+  .chars-strip{
+    display:flex;flex-wrap:wrap;gap:3px;padding:6px;
+    background:var(--panel-deep);border:1px solid var(--line);border-radius:4px;
+    max-height:150px;overflow-y:auto;scrollbar-width:thin;
+    user-select:none;
+  }
+  .chars-strip::-webkit-scrollbar{width:6px}
+  .chars-strip::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px}
+  .char-tile{
+    width:30px;height:30px;border-radius:3px;border:1px solid var(--line-strong);
+    background:var(--paper-raised);color:var(--ink);font-family:monospace;font-size:13px;
+    cursor:pointer;display:grid;place-items:center;position:relative;
+    transition:border-color .1s;user-select:none;
+  }
+  .char-tile:hover{border-color:var(--accent)}
+  .char-tile.selected{border-color:var(--focus);border-width:2px}
+  .char-tile.has-style::after{
+    content:'';position:absolute;right:1px;bottom:1px;
+    width:5px;height:5px;border-radius:50%;background:#7dda7d;
+  }
+  .char-tile.has-font::before{
+    content:'';position:absolute;left:1px;top:1px;
+    width:5px;height:5px;border-radius:50%;background:#75c7bd;
+  }
+  .char-tile .style-icon{
+    position:absolute;left:1px;bottom:1px;font-size:8px;color:#f28b82;font-weight:bold;
+  }
+  .char-tile.newline{
+    background:transparent;border-style:dashed;color:var(--subtle);font-size:11px;
+  }
+  .char-tile .color-dot{
+    position:absolute;right:2px;top:2px;
+    width:6px;height:6px;border-radius:50%;
+    box-shadow:0 0 0 1px rgba(0,0,0,.45);
+  }
+
+  .sel-info{
+    margin-top:6px;font-size:11px;color:var(--focus);
+    line-height:1.4;font-weight:600;
+  }
+
+  .sel-range-row{
+    display:flex;gap:6px;align-items:center;margin-top:8px;
+    padding:6px 8px;background:var(--panel-deep);
+    border:1px solid var(--line);border-radius:4px;
+  }
+  .sel-range-row label{
+    display:flex;align-items:center;gap:4px;
+    color:var(--muted);font-size:11px;font-weight:650;flex:1;
+    min-width:0;
+  }
+  .sel-range-row input{
+    flex:1;min-height:26px;padding:3px 5px;
+    border:1px solid var(--line);border-radius:3px;
+    background:var(--panel);color:var(--ink);font:inherit;font-size:12px;
+    min-width:0;
+  }
+  .sel-range-row button{
+    padding:5px 10px;font-size:11px;flex-shrink:0;
+  }
+
+  .style-checks{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .style-checks label{
+    display:flex;align-items:center;justify-content:center;gap:4px;
+    padding:6px 4px;background:var(--paper-raised);border:1px solid var(--line);
+    border-radius:4px;cursor:pointer;font-size:11px;font-weight:650;color:var(--ink);
+  }
+  .style-checks label:has(input:checked){
+    border-color:var(--focus);
+    background:color-mix(in srgb,var(--focus) 20%,var(--paper-raised));
+  }
+  .style-checks input{margin:0}
+
+  .preview-box{
+    display:grid;place-items:center;background:#0a0a08;
+    border:1px solid var(--line);border-radius:4px;padding:6px;min-height:160px;
+  }
+  #previewCanvas{
+    display:block;max-width:100%;height:auto;image-rendering:pixelated;border-radius:2px;
+  }
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .row-4{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+
+  .char-font-box{
+    margin-top:8px;padding:8px;
+    border:1px solid var(--line);border-radius:4px;
+    background:var(--panel-deep);display:none;
+  }
+  .char-font-box.show{display:block}
+
+  .bgs-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+  }
+  @media (max-width:600px){.bgs-grid{grid-template-columns:repeat(3,1fr)}}
+  .bg-cell{
+    position:relative;background:var(--paper-raised);border:1px solid var(--line);
+    border-radius:6px;padding:4px;display:flex;flex-direction:column;gap:3px;
+    cursor:pointer;min-height:60px;
+  }
+  .bg-cell.active{border-color:var(--focus);border-width:2px;padding:3px}
+  .bg-cell.empty{
+    background:repeating-linear-gradient(45deg,#1a1a17 0 4px,#222 4px 8px);
+    border-style:dashed;justify-content:center;align-items:center;
+  }
+  .bg-cell canvas.bg-thumb{
+    display:block;width:100%;aspect-ratio:3/2;border-radius:3px;background:#000;
+    image-rendering:pixelated;
+  }
+  .bg-cell canvas.bg-thumb.placeholder{
+    background:repeating-linear-gradient(45deg,#1a1a1a 0 8px,#222 8px 16px);
+  }
+  .bg-cell .bg-label{
+    font-size:10px;color:var(--muted);text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .bg-cell .bg-note{
+    font-size:9px;color:var(--ink);text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .bg-cell .bg-actions{display:flex;gap:2px;margin-top:2px}
+  .bg-cell .bg-actions button{
+    flex:1;padding:3px 2px;font-size:9px;border-radius:3px;
+    border:1px solid var(--line);background:var(--paper-raised);color:var(--ink);
+    cursor:pointer;
+  }
+  .bg-cell .bg-actions button.danger{color:var(--danger);border-color:#6a2a2a}
+  .bg-cell.none{background:var(--paper);border-style:solid}
+  .bg-cell.none.active{border-color:var(--focus);border-width:2px;padding:3px}
+  .bg-cell.none .bg-label{padding:22px 4px;font-size:11px;color:var(--ink)}
+
+  .line-settings {
+    display: flex; flex-direction: column; gap: 4px;
+    margin-top: 8px; max-height: 280px; overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .line-settings::-webkit-scrollbar{width:6px}
+  .line-settings::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px}
+  .line-setting-row {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) 72px 20px;
+    gap: 6px; align-items: center;
+    padding: 4px 8px;
+    background: var(--panel-deep);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: 11px;
+  }
+  .line-setting-row .line-idx {
+    color: var(--muted); font-weight: 650; text-align: right;
+    white-space: nowrap;
+  }
+  .line-setting-row .line-preview {
+    color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  .line-setting-row .line-preview.empty { color: var(--subtle); font-style: italic; }
+  .line-setting-row input {
+    width: 100%; min-height: 24px; padding: 2px 6px;
+    border: 1px solid var(--line); border-radius: 3px;
+    background: var(--panel); color: var(--ink); font: inherit; font-size: 11px;
+    text-align: right;
+  }
+  .line-setting-row .unit { color: var(--subtle); }
+  .line-settings-empty {
+    padding: 10px 8px; text-align: center;
+    color: var(--subtle); font-size: 11px;
+  }
+
+  .font-loading-overlay{
+    position:fixed;inset:0;
+    background:rgba(0,0,0,.72);
+    z-index:1500;
+    display:flex;align-items:center;justify-content:center;
+    opacity:0;visibility:hidden;
+    transition:opacity .2s ease, visibility .2s ease;
+    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+    padding:16px;
+  }
+  .font-loading-overlay.show{ opacity:1;visibility:visible; }
+  .font-loading-card{
+    background:var(--panel);
+    border:1px solid var(--line-strong);
+    border-radius:10px;
+    padding:20px 22px;
+    min-width:320px;max-width:90%;
+    box-shadow:0 8px 32px rgba(0,0,0,.6);
+  }
+  .font-loading-title{
+    font-size:14px;font-weight:700;color:var(--ink);
+    margin:0 0 4px 0;line-height:1.3;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .font-loading-sub{
+    font-size:12px;color:var(--muted);margin:0 0 14px 0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .font-loading-bar{
+    height:8px;background:#10100e;border-radius:4px;overflow:hidden;
+    margin-bottom:8px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);
+  }
+  .font-loading-bar span{
+    display:block;height:100%;width:0;
+    background:linear-gradient(90deg, var(--focus), #a8e6df);
+    border-radius:4px;
+    transition:width .12s ease;
+  }
+  .font-loading-bar.done span{ background:linear-gradient(90deg, #7dda7d, #b8f0b8); }
+  .font-loading-bar.err span{ background:linear-gradient(90deg, var(--danger), #ffb4a8); }
+  .font-loading-stats{
+    display:flex;justify-content:space-between;align-items:baseline;
+    font-size:11px;color:var(--muted);
+    font-variant-numeric:tabular-nums;
+    gap:8px;
+  }
+  .font-loading-stats span{
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+</style>
+</head>
+<body data-nav-layout="scroll">
+
+<header>
+  <h1><span class="brand"></span>ASCII 文本编辑</h1>
+</header>
+
+<main>
+<div class="grid">
+
+  <fieldset>
+    <legend>内容</legend>
+    <textarea id="textInput" placeholder="输入文本">Hello E6! ★</textarea>
+    <div class="info"><span id="charCount">0</span> 字符</div>
+
+    <label>旋转方向
+      <select id="directionSelect">
+        <option value="0">0° 横向</option>
+        <option value="90">90° 顺时针</option>
+        <option value="180">180° 倒立</option>
+        <option value="270">270° 逆时针</option>
+      </select>
+    </label>
+
+    <label>字体
+      <select id="fontFamilySelect"></select>
+    </label>
+
+    <div class="row-2">
+      <label>字号
+        <select id="sizeSelect"></select>
+      </label>
+      <label>行距（倍数）
+        <input type="number" id="lineHeight" value="1.5" min="0" max="3" step="0.05">
+      </label>
+    </div>
+    <div class="row-2">
+      <label>水平对齐
+        <select id="alignSelect">
+          <option value="left">左</option>
+          <option value="center">中</option>
+          <option value="right">右</option>
+        </select>
+      </label>
+      <label>垂直对齐
+        <select id="valignSelect">
+          <option value="top">上</option>
+          <option value="center">中</option>
+          <option value="bottom">下</option>
+        </select>
+      </label>
+    </div>
+    <div class="row-4">
+      <label>上边距
+        <input type="number" id="marginTop" value="20" min="0" max="200">
+      </label>
+      <label>下边距
+        <input type="number" id="marginBottom" value="20" min="0" max="200">
+      </label>
+      <label>左边距
+        <input type="number" id="marginLeft" value="20" min="0" max="200">
+      </label>
+      <label>右边距
+        <input type="number" id="marginRight" value="20" min="0" max="200">
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>颜色</legend>
+    <div class="color-mode">
+      <button type="button" data-target="fg" class="active">前景</button>
+      <button type="button" data-target="bg">背景</button>
+      <button type="button" data-target="outline">描边</button>
+      <button type="button" data-target="outline" data-clear="1" class="clear-outline" title="清除描边">✕</button>
+    </div>
+    <div class="color-scroll">
+      <div class="color-grid" id="basicGrid"></div>
+      <div class="color-grid pseudo" id="pseudoGrid"></div>
+    </div>
+    <div class="info" id="currentColorInfo">当前：前景 黑 / 背景 白 / 描边 无</div>
+  </fieldset>
+
+  <fieldset style="grid-column:1/-1">
+    <legend>字符样式 / 多选</legend>
+    <div class="chars-strip" id="charsStrip"></div>
+    <div class="sel-info" id="selInfo">未选中任何字符（更改将作用于全局默认）</div>
+    <div class="info">
+      单击选择；Shift+单击选择范围；Ctrl/Cmd+单击切换；不选任何字符则改全局默认。
+    </div>
+
+    <div class="sel-range-row">
+      <label>起始<input type="number" id="selStart" min="0" placeholder="0"></label>
+      <label>结束<input type="number" id="selEnd" min="0" placeholder="0"></label>
+      <button type="button" id="selectRangeBtn">按范围选</button>
+    </div>
+
+    <div class="style-checks" style="margin-top:8px">
+      <label><input type="checkbox" id="boldCheck">粗体 B</label>
+      <label><input type="checkbox" id="italicCheck">斜体 I</label>
+      <label><input type="checkbox" id="underlineCheck">下划线 U</label>
+      <label><input type="checkbox" id="strikeCheck">删除线 S</label>
+    </div>
+
+    <div class="char-font-box" id="charFontBox">
+      <label>字符字体 / 字号覆盖
+        <select id="charFontSelect">
+          <option value="">（使用全局）</option>
+        </select>
+      </label>
+      <label style="margin-top:6px">字符字间距覆盖（px，留空跟随全局）
+        <input type="number" id="charLetterSpacing" min="-30" max="60" step="1" placeholder="留空跟随全局">
+      </label>
+      <div class="info">只影响选中的字符，不选则跟随全局设置。</div>
+    </div>
+
+    <div class="btn-row" style="margin-top:8px">
+      <button type="button" id="selectAllBtn">全选</button>
+      <button type="button" id="invertSelBtn">反向选择</button>
+      <button type="button" id="clearSelBtn">取消选择</button>
+    </div>
+    <div class="btn-row" style="margin-top:6px">
+      <button type="button" id="selectSameBtn">选择同字</button>
+      <button type="button" id="clearSelStyle">清除选中样式</button>
+      <button type="button" id="clearAllStyle">全部重置</button>
+    </div>
+  </fieldset>
+
+  <fieldset style="grid-column:1/-1">
+    <legend>间距 / 行设置</legend>
+    <div class="row-2">
+      <label>全局字间距（px，整数，可负）
+        <input type="number" id="letterSpacing" value="0" min="-30" max="60" step="1">
+      </label>
+      <label>说明
+        <span class="info" style="padding-top:6px">
+          全局行距在上方"内容"区。这里设置全局字间距和每行额外行距。
+        </span>
+      </label>
+    </div>
+    <div class="info" style="margin-top:8px">
+      每行"额外行距"：正数增加该行与下一行的间距，负数减少，0 表示不加额外间距。
+      与全局行距叠加，总行高限制为 0（完全重叠）。
+    </div>
+    <div id="lineSettings" class="line-settings"></div>
+  </fieldset>
+
+  <fieldset style="grid-column:1/-1">
+    <legend>背景图（SD + Flash）</legend>
+    <div class="bgs-grid" id="bgsGrid"></div>
+    <div class="btn-row" style="margin-top:8px">
+      <button type="button" id="uploadBgBtn">上传新背景</button>
+    </div>
+    <div class="info" id="bgHint">
+      当前：无背景（使用背景色填充）。
+    </div>
+  </fieldset>
+
+  <fieldset style="grid-column:1/-1">
+    <legend>预览</legend>
+    <div class="preview-box">
+      <canvas id="previewCanvas" width="720" height="480"></canvas>
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button type="button" id="refreshBtn">重新渲染</button>
+      <button type="button" id="applyBtn" class="primary" disabled>应用到屏幕</button>
+    </div>
+    <div class="info">
+      预览在浏览器本地生成；"应用到屏幕"把参数发给设备，由后端流式渲染。
+    </div>
+  </fieldset>
+
+  <div id="status" class="status" style="grid-column:1/-1">加载中…</div>
+
+</div>
+</main>
+
+<div class="font-loading-overlay" id="fontLoadingOverlay" aria-live="polite">
+  <div class="font-loading-card">
+    <div class="font-loading-title" id="fontLoadingTitle">加载字模中…</div>
+    <div class="font-loading-sub" id="fontLoadingSub">准备中…</div>
+    <div class="font-loading-bar" id="fontLoadingBar"><span id="fontLoadingBarFill"></span></div>
+    <div class="font-loading-stats">
+      <span id="fontLoadingSize">0 / 0</span>
+      <span id="fontLoadingPct">0%</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+const W = 720, H = 480;
+const THUMB_W = 360, THUMB_H = 240;
+const THUMB_BYTES = (THUMB_W * THUMB_H) / 2;
+const INDEX_MAP = [0x0, 0x1, 0x2, 0x3, 0x5, 0x6];
+const IDX_REVERSE = {0x0:0, 0x1:1, 0x2:2, 0x3:3, 0x5:4, 0x6:5};
+
+const PALETTE_RGB = [
+  [0,0,0],[255,255,255],[255,255,0],
+  [255,0,0],[0,0,255],[0,255,0]
+];
+const PALETTE_NAME = ['黑','白','黄','红','蓝','绿'];
+
+/* ★ 生成缩略图 */
+function generateThumb(bin){
+  var tw = THUMB_W, th = THUMB_H;
+  var thumb = new Uint8Array(tw * th / 2);
+  for (var ty = 0; ty < th; ty++){
+    var sy = ty * 2;
+    var srcBase = sy * 360;
+    var dstBase = ty * 180;
+    for (var tx = 0; tx < tw; tx++){
+      var sx = tx * 2;
+      var b = bin[srcBase + (sx >> 1)];
+      var nib = (b >> 4) & 0xF;
+      if (tx & 1) thumb[dstBase + (tx >> 1)] |= nib;
+      else        thumb[dstBase + (tx >> 1)]  = (nib << 4);
+    }
+  }
+  return thumb;
+}
+
+const PSEUDO_COMBOS = [
+  [0,1,'灰'], [0,2,'暗黄'], [0,3,'暗红'], [0,4,'暗蓝'], [0,5,'暗绿'],
+  [1,2,'浅黄'], [1,3,'浅粉'], [1,4,'浅蓝'], [1,5,'浅绿'],
+  [2,3,'橙'], [2,4,'深绿'], [2,5,'黄绿'],
+  [3,4,'紫'], [3,5,'棕'], [4,5,'青']
+];
+const DENSITIES = [4, 8, 12];
+const DENSITY_LABELS = ['25%','50%','75%'];
+const BAYER4 = [
+  [0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]
+];
+
+const FRAME_BYTES = 172800;
+const MAX_NOTE = 200;
+
+const $ = id => document.getElementById(id);
+const statusEl = $('status');
+
+let fontGroups = [];
+let currentFontGroupIdx = 0;
+let currentSize = 32;
+let direction = 0;
+
+let fgColor = { type:'solid', idx:0 };
+let bgColor = { type:'solid', idx:1 };
+let outlineColor = null;
+let colorTarget = 'fg';
+
+let defaultStyle = {
+  bold:false, italic:false, underline:false, strikethrough:false
+};
+let perChar = {};
+let selectedChars = new Set();
+let lastClickIdx = -1;
+
+let lineExtras = {};
+
+let lastBin = null;
+let renderTimer = 0;
+let rendering = false;
+let pendingRender = false;
+
+let bgsList = [];
+let bgsSdActive = false;
+let selectedBgStorage = null;
+let selectedBgIndex = -1;
+let bgImageBuf = null;
+let bgImageSlot = -1;
+let bgImageStorage = null;
+
+const fontCache = {};
+const fontLoadingPromises = {};
+const bgThumbCache = {};
+
+/* ===== 缩略图串行队列 ===== */
+
+var thumbQueue = [];
+var thumbProcessing = false;
+
+var thumbObserver = null;
+if ('IntersectionObserver' in window){
+  thumbObserver = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if (entry.isIntersecting){
+        var el = entry.target;
+        thumbObserver.unobserve(el);
+        enqueueBgThumb(el);
+      }
+    });
+  }, { rootMargin: '300px 0px' });
+}
+
+function enqueueBgThumb(canvas){
+  thumbQueue.push({ canvas: canvas });
+  if (!thumbProcessing) processThumbQueue();
+}
+
+async function processThumbQueue(){
+  if (thumbProcessing) return;
+  thumbProcessing = true;
+  while (thumbQueue.length > 0){
+    var item = thumbQueue.shift();
+    try {
+      if (item.canvas && item.canvas.dataset && item.canvas.dataset.slot !== undefined){
+        var slot = {
+          storage: item.canvas.dataset.storage,
+          index: parseInt(item.canvas.dataset.slot, 10),
+          note: item.canvas.dataset.note || ''
+        };
+        await loadBgThumb(slot, item.canvas);
+      }
+    } catch(e){
+      console.warn('bg thumb fail', e);
+    }
+    await new Promise(function(r){ setTimeout(r, 0); });
+  }
+  thumbProcessing = false;
+}
+
+function setStatus(msg, cls){
+  statusEl.textContent = msg;
+  statusEl.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+function renderLineSettings(){
+  const container = $('lineSettings');
+  if (!container) return;
+  const lines = $('textInput').value.split('\n');
+  container.innerHTML = '';
+
+  if (lines.length === 0){
+    const e = document.createElement('div');
+    e.className = 'line-settings-empty';
+    e.textContent = '（无行）';
+    container.appendChild(e);
+    return;
+  }
+
+  lines.forEach((line, li) => {
+    const row = document.createElement('div');
+    row.className = 'line-setting-row';
+
+    const idxEl = document.createElement('span');
+    idxEl.className = 'line-idx';
+    idxEl.textContent = '行 ' + (li + 1);
+
+    const prevEl = document.createElement('span');
+    prevEl.className = 'line-preview' + (line.length === 0 ? ' empty' : '');
+    if (line.length === 0){
+      prevEl.textContent = '（空行）';
+    } else {
+      prevEl.textContent = line.length > 40 ? line.slice(0, 40) + '…' : line;
+    }
+    prevEl.title = line;
+
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.min = '-200';
+    inp.max = '200';
+    inp.step = '1';
+    inp.placeholder = '0';
+    inp.value = lineExtras[li] ? String(lineExtras[li]) : '';
+    inp.addEventListener('input', () => {
+      const v = parseInt(inp.value, 10);
+      if (!v){
+        delete lineExtras[li];
+      } else {
+        lineExtras[li] = v;
+      }
+      scheduleRender();
+    });
+
+    const unit = document.createElement('span');
+    unit.className = 'unit';
+    unit.textContent = 'px';
+
+    row.append(idxEl, prevEl, inp, unit);
+    container.appendChild(row);
+  });
+}
+
+let _loadState = null;
+let _hideTimer = 0;
+
+function _fmtKb(bytes){ return (bytes / 1024).toFixed(1); }
+
+function _updateLoadUI(){
+  if (!_loadState) return;
+  const s = _loadState;
+  const tf = s.totalFiles;
+  const cf = s.currentFile;
+
+  let thisPct = 0;
+  if (s.fileBytesTotal > 0){
+    thisPct = Math.min(1, s.fileBytesReceived / s.fileBytesTotal);
+  } else if (s.fileBytesReceived > 0){
+    thisPct = Math.min(0.99, s.fileBytesReceived / (100 * 1024));
+  }
+
+  const overallPct = Math.round(((cf + thisPct) / tf) * 100);
+
+  $('fontLoadingBarFill').style.width = overallPct + '%';
+  $('fontLoadingPct').textContent = overallPct + '%';
+
+  let sub = '文件 ' + (cf + 1) + ' / ' + tf;
+  if (s.fileBytesTotal > 0){
+    sub += ' · ' + _fmtKb(s.fileBytesReceived) + ' / ' + _fmtKb(s.fileBytesTotal) + ' KB';
+  } else if (s.fileBytesReceived > 0){
+    sub += ' · ' + _fmtKb(s.fileBytesReceived) + ' KB';
+  }
+  $('fontLoadingSub').textContent = sub;
+
+  $('fontLoadingSize').textContent = '第 ' + (cf + 1) + ' / ' + tf + ' 个文件';
+}
+
+function beginLoadSession(label, totalFiles){
+  clearTimeout(_hideTimer);
+  _hideTimer = 0;
+
+  const isSameSession =
+    _loadState && _loadState.label === label && !_loadState.finished;
+
+  _loadState = {
+    label: label,
+    totalFiles: Math.max(1, totalFiles || 1),
+    currentFile: 0,
+    fileBytesReceived: 0,
+    fileBytesTotal: 0,
+    finished: false,
+    startedAt: Date.now(),
+  };
+
+  $('fontLoadingTitle').textContent = '加载字模 — ' + label;
+  $('fontLoadingBar').classList.remove('done', 'err');
+  $('fontLoadingBarFill').style.width = '0%';
+
+  if (!isSameSession){
+    $('fontLoadingOverlay').classList.add('show');
+  }
+  _updateLoadUI();
+}
+
+function updateLoadProgress(fileIndex, received, total){
+  if (!_loadState) return;
+  _loadState.currentFile = fileIndex;
+  _loadState.fileBytesReceived = received;
+  if (total && total > 0) _loadState.fileBytesTotal = total;
+  _updateLoadUI();
+}
+
+function finishLoadSession(){
+  if (!_loadState) return;
+  _loadState.finished = true;
+  $('fontLoadingBar').classList.add('done');
+  $('fontLoadingBarFill').style.width = '100%';
+  $('fontLoadingPct').textContent = '100%';
+  $('fontLoadingSub').textContent = '完成';
+  clearTimeout(_hideTimer);
+  _hideTimer = setTimeout(() => {
+    if (_loadState && _loadState.finished){
+      $('fontLoadingOverlay').classList.remove('show');
+      _loadState = null;
+    }
+  }, 500);
+}
+
+function failLoadSession(err){
+  if (!_loadState) return;
+  _loadState.finished = true;
+  $('fontLoadingBar').classList.add('err');
+  $('fontLoadingTitle').textContent = '字模加载失败';
+  $('fontLoadingSub').textContent = String(err || '未知错误').slice(0, 100);
+  clearTimeout(_hideTimer);
+  _hideTimer = setTimeout(() => {
+    if (_loadState && _loadState.finished){
+      $('fontLoadingOverlay').classList.remove('show');
+      _loadState = null;
+    }
+  }, 2000);
+}
+
+async function fetchWithProgress(url, onProgress, cache){
+  const resp = await fetch(url, { cache: cache || 'force-cache' });
+  if (!resp.ok){
+    throw new Error('HTTP ' + resp.status);
+  }
+  const total = parseInt(resp.headers.get('Content-Length') || '0', 10) || 0;
+
+  if (!resp.body || !resp.body.getReader){
+    const buf = await resp.arrayBuffer();
+    if (onProgress) onProgress(buf.byteLength, buf.byteLength);
+    return buf;
+  }
+
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let received = 0;
+  if (onProgress) onProgress(0, total);
+
+  while (true){
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (onProgress) onProgress(received, total);
+  }
+
+  const out = new Uint8Array(received);
+  let pos = 0;
+  for (let i = 0; i < chunks.length; i++){
+    out.set(chunks[i], pos);
+    pos += chunks[i].length;
+  }
+  return out.buffer;
+}
+
+function fmtColor(spec){
+  if (!spec) return '无';
+  if (spec.type === 'solid') return PALETTE_NAME[spec.idx];
+  const combo = PSEUDO_COMBOS.find(c => c[0] === spec.a && c[1] === spec.b);
+  const lbl = combo ? combo[2] : (PALETTE_NAME[spec.a] + '+' + PALETTE_NAME[spec.b]);
+  const dl = spec.density === 4 ? '25%' : spec.density === 8 ? '50%' : '75%';
+  return lbl + ' ' + dl;
+}
+
+function resolveColor(spec, x, y){
+  if (!spec) return 1;
+  if (spec.type === 'solid') return spec.idx;
+  const t = BAYER4[y & 3][x & 3];
+  return t < spec.density ? spec.a : spec.b;
+}
+
+function specToJson(spec){
+  if (spec === null) return null;
+  if (!spec) return undefined;
+  if (spec.type === 'solid') return { type:'solid', idx: spec.idx };
+  return { type:'pseudo', a: spec.a, b: spec.b, density: spec.density };
+}
+
+function specToCss(spec){
+  if (!spec) return 'transparent';
+  if (spec.type === 'solid'){
+    const c = PALETTE_RGB[spec.idx];
+    return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+  }
+  const c = PALETTE_RGB[spec.a];
+  return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+}
+
+function buildFontGroups(fontsArray){
+  const groups = {};
+  fontsArray.forEach(f => {
+    const key = f.storage + ':' + f.family;
+    if (!groups[key]){
+      groups[key] = { family: f.family, storage: f.storage, sizes: [], bySize: {} };
+    }
+    groups[key].sizes.push(f.size);
+    groups[key].bySize[f.size] = f;
+  });
+  const list = Object.values(groups);
+  list.forEach(g => g.sizes.sort((a, b) => a - b));
+  list.sort((a, b) => {
+    if (a.storage !== b.storage) return a.storage === 'flash' ? -1 : 1;
+    return a.family.localeCompare(b.family);
+  });
+  return list;
+}
+
+function buildFontPaths(fontInfo){
+  if (!fontInfo) return null;
+  const base = fontInfo.storage === 'sd' ? '/sd/e6/fonts/' : '/www/fonts/';
+  if (fontInfo.names && fontInfo.names.length){
+    return fontInfo.names.map(n => base + n + '.bin');
+  }
+  const cnt = fontInfo.chunk_count || 1;
+  const paths = [];
+  for (let i = 0; i < cnt; i++){
+    paths.push(base + fontInfo.family + '_' + fontInfo.size + '_' + i + '.bin');
+  }
+  return paths;
+}
+
+async function loadFontsList(){
+  try{
+    const r = await fetch('/fonts/list', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    return d.fonts || [];
+  } catch(e){
+    console.warn('fonts/list 失败:', e);
+    return [];
+  }
+}
+
+function rebuildFontFamilySelect(){
+  const sel = $('fontFamilySelect');
+  sel.innerHTML = '';
+  fontGroups.forEach((g, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    const tag = g.storage === 'sd' ? '[SD]' : '[Flash]';
+    let totalChunks = 0;
+    g.sizes.forEach(s => { totalChunks += (g.bySize[s].chunk_count || 1); });
+    opt.textContent = tag + ' ' + g.family + ' (' + g.sizes.join('/') + 'px, ' + totalChunks + ' files)';
+    sel.appendChild(opt);
+  });
+  if (fontGroups.length > 0) sel.value = '0';
+}
+
+function pickSize(group, preferred){
+  if (group.sizes.includes(preferred)) return preferred;
+  if (group.sizes.includes(32)) return 32;
+  return group.sizes[group.sizes.length - 1];
+}
+
+function rebuildSizeSelect(){
+  const g = fontGroups[currentFontGroupIdx];
+  if (!g) return;
+  const sel = $('sizeSelect');
+  const prev = currentSize;
+  sel.innerHTML = '';
+  g.sizes.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s + ' px';
+    sel.appendChild(opt);
+  });
+  currentSize = pickSize(g, prev);
+  sel.value = String(currentSize);
+}
+
+function getCurrentFontGroup(){ return fontGroups[currentFontGroupIdx] || null; }
+function getCurrentFontInfo(){
+  const g = getCurrentFontGroup();
+  if (!g) return null;
+  return g.bySize[currentSize] || null;
+}
+function fontKey(f){ return f.storage + ':' + f.family + ':' + f.size; }
+function fontKeyOfGroupSize(storage, family, size){ return storage + ':' + family + ':' + size; }
+
+function parseChunk(buf, glyphs){
+  const view = new DataView(buf);
+  const version = view.getUint8(0);
+  let count, maxH, isUnicode;
+  if (version === 0x02){
+    count = view.getUint8(1);
+    maxH = view.getUint16(2, true);
+    isUnicode = false;
+  } else if (version === 0x03){
+    const flags = view.getUint8(1);
+    count = view.getUint16(2, true);
+    maxH = view.getUint16(4, true);
+    isUnicode = !!(flags & 1);
+  } else {
+    throw new Error('v2/v3 字模版本 ' + version + ' 不支持');
+  }
+  let off = 6;
+  for (let i = 0; i < count; i++){
+    let code;
+    if (isUnicode){
+      code = (view.getUint8(off) << 8) | view.getUint8(off + 1);
+      off += 2;
+    } else {
+      code = view.getUint8(off);
+      off += 1;
+    }
+    const w = view.getUint8(off);
+    const h = view.getUint8(off + 1);
+    off += 2;
+    if (w === 0 || h === 0){
+      if (!(code in glyphs)) glyphs[code] = null;
+      continue;
+    }
+    const rb = (w + 7) >> 3;
+    if (!(code in glyphs)){
+      glyphs[code] = { w, h, data: new Uint8Array(buf, off, rb * h) };
+    }
+    off += rb * h;
+  }
+  return { maxH, isUnicode };
+}
+
+function parseV4Chunk(buf){
+  const view = new DataView(buf);
+  const version = view.getUint8(0);
+  if (version !== 0x04) throw new Error('不是 v4');
+  const flags = view.getUint8(1);
+  const count = view.getUint16(2, true);
+  const maxH = view.getUint16(4, true);
+  const isUnicode = !!(flags & 1);
+  const index = {};
+  let off = 6;
+  for (let i = 0; i < count; i++){
+    const code = (view.getUint8(off) << 8) | view.getUint8(off + 1);
+    const gOff = (view.getUint8(off + 2) << 16) |
+                 (view.getUint8(off + 3) << 8) |
+                 view.getUint8(off + 4);
+    const w = view.getUint8(off + 5);
+    index[code] = [gOff, w];
+    off += 6;
+  }
+  return { maxH, isUnicode, index, buf };
+}
+
+function makeLazyV4Font(f, idx, base){
+  const chunkBuf = {};
+  const chunkIndex = {};
+  const glyphCache = new Map();
+  const glyphLru = [];
+  const maxGlyphCache = 300;
+
+  const chunksArr = idx.chunks;
+  const maxH = idx.max_h;
+  const isUnicode = idx.unicode;
+
+  function findChunk(code){
+    let lo = 0, hi = chunksArr.length - 1;
+    while (lo <= hi){
+      const mid = (lo + hi) >> 1;
+      const c = chunksArr[mid];
+      if (code < c.min) hi = mid - 1;
+      else if (code > c.max) lo = mid + 1;
+      else return mid;
+    }
+    return -1;
+  }
+
+  async function loadChunk(ci){
+    if (chunkIndex[ci]) return;
+    const c = chunksArr[ci];
+    const url = base + c.name + '.bin';
+    const buf = await fetchWithProgress(url, null, 'force-cache');
+    const view = new DataView(buf);
+    const count = view.getUint16(2, true);
+    const index = {};
+    for (let i = 0; i < count; i++){
+      const off = 6 + i * 6;
+      const code = (view.getUint8(off) << 8) | view.getUint8(off+1);
+      const gOff = (view.getUint8(off+2) << 16) | (view.getUint8(off+3) << 8) | view.getUint8(off+4);
+      const w = view.getUint8(off+5);
+      index[code] = [gOff, w];
+    }
+    chunkBuf[ci] = buf;
+    chunkIndex[ci] = index;
+  }
+
+  function readGlyph(code){
+    const ci = findChunk(code);
+    if (ci < 0) return null;
+    if (!chunkIndex[ci]) return undefined;
+    const e = chunkIndex[ci][code];
+    if (!e) return null;
+    const [gOff, w] = e;
+    if (w === 0) return null;
+    const rb = (w + 7) >> 3;
+    const size = rb * maxH;
+    return { w, h: maxH, data: new Uint8Array(chunkBuf[ci], gOff, size) };
+  }
+
+  return {
+    maxH, isUnicode,
+    findChunk,
+    async ensureChunksFor(codes){
+      const needed = new Set();
+      for (const code of codes){
+        const ci = findChunk(code);
+        if (ci >= 0 && !chunkIndex[ci]) needed.add(ci);
+      }
+      if (needed.size === 0) return;
+
+      const arr = Array.from(needed).sort((a, b) => a - b);
+      beginLoadSession(f.family + ' ' + f.size + 'px', arr.length);
+      try {
+        for (let i = 0; i < arr.length; i++){
+          const ci = arr[i];
+          updateLoadProgress(i, 0, 0);
+          const c = chunksArr[ci];
+          const url = base + c.name + '.bin';
+
+          let buf;
+          try {
+            buf = await fetchWithProgress(url, (recv, tot) => {
+              updateLoadProgress(i, recv, tot);
+            }, 'force-cache');
+          } catch(e){
+            continue;
+          }
+
+          const view = new DataView(buf);
+          const count = view.getUint16(2, true);
+          const index = {};
+          for (let j = 0; j < count; j++){
+            const off = 6 + j * 6;
+            const code = (view.getUint8(off) << 8) | view.getUint8(off+1);
+            const gOff = (view.getUint8(off+2) << 16) | (view.getUint8(off+3) << 8) | view.getUint8(off+4);
+            const w = view.getUint8(off+5);
+            index[code] = [gOff, w];
+          }
+          chunkBuf[ci] = buf;
+          chunkIndex[ci] = index;
+        }
+        finishLoadSession();
+      } catch(e){
+        failLoadSession(e.message || e);
+        throw e;
+      }
+    },
+    glyph(code){
+      if (glyphCache.has(code)) return glyphCache.get(code);
+      const g = readGlyph(code);
+      if (g === undefined) return null;
+      if (g === null){
+        glyphCache.set(code, null);
+        return null;
+      }
+      glyphCache.set(code, g);
+      glyphLru.push(code);
+      while (glyphLru.length > maxGlyphCache){
+        const ev = glyphLru.shift();
+        glyphCache.delete(ev);
+      }
+      return g;
+    }
+  };
+}
+
+async function _loadAllChunks(f, names){
+  const urls = names.map(n =>
+    '/fonts/get?storage=' + encodeURIComponent(f.storage) +
+    '&name=' + encodeURIComponent(n));
+
+  const totalFiles = urls.length;
+  beginLoadSession(f.family + ' ' + f.size + 'px', totalFiles);
+
+  const buffers = [];
+  const indices = [];
+  let maxH = 0, isUnicode = true;
+  let firstVer = 0;
+
+  try {
+    for (let i = 0; i < urls.length; i++){
+      updateLoadProgress(i, 0, 0);
+
+      let buf;
+      try {
+        buf = await fetchWithProgress(urls[i], (recv, tot) => {
+          updateLoadProgress(i, recv, tot);
+        }, 'force-cache');
+      } catch(e){
+        buffers.push(null);
+        indices.push(null);
+        continue;
+      }
+      buffers.push(buf);
+
+      if (i === 0){
+        firstVer = new DataView(buf).getUint8(0);
+      }
+
+      if (firstVer === 0x04){
+        try {
+          const info = parseV4Chunk(buf);
+          indices.push(info.index);
+          if (i === 0){ maxH = info.maxH; isUnicode = info.isUnicode; }
+        } catch(e){
+          indices.push(null);
+        }
+      }
+    }
+
+    if (firstVer === 0x04){
+      finishLoadSession();
+      return {
+        maxH, isUnicode, buffers, indices,
+        glyph: function(code){
+          for (let i = 0; i < this.indices.length; i++){
+            const idx = this.indices[i];
+            if (!idx) continue;
+            const e = idx[code];
+            if (!e) continue;
+            const [gOff, w] = e;
+            if (w === 0) return null;
+            const rb = (w + 7) >> 3;
+            const size = rb * this.maxH;
+            return { w, h: this.maxH, data: new Uint8Array(this.buffers[i], gOff, size) };
+          }
+          return null;
+        }
+      };
+    }
+
+    const glyphs = {};
+    for (let i = 0; i < urls.length; i++){
+      let buf = buffers[i];
+      if (!buf) continue;
+      try {
+        const info = parseChunk(buf, glyphs);
+        if (!maxH) maxH = info.maxH;
+        isUnicode = info.isUnicode;
+      } catch(e){}
+    }
+
+    finishLoadSession();
+    return {
+      maxH, glyphs, isUnicode,
+      glyph: function(code){ return this.glyphs[code] || null; }
+    };
+  } catch(e){
+    failLoadSession(e.message || e);
+    throw e;
+  }
+}
+
+async function _loadFontImpl(f){
+  const base = f.storage === 'sd' ? '/sd/e6/fonts/' : '/www/fonts/';
+
+  const idxUrl = base + f.family + '_' + f.size + '.idx';
+  try {
+    const r = await fetch(idxUrl, { cache:'force-cache' });
+    if (r.ok){
+      const idx = await r.json();
+      if (idx && idx.chunks && idx.chunks.length > 0){
+        return makeLazyV4Font(f, idx, base);
+      }
+    }
+  } catch(e){}
+
+  const names = [];
+  const cnt = f.chunk_count || 1;
+  for (let i = 0; i < cnt; i++){
+    names.push(f.family + '_' + f.size + '_' + i);
+  }
+  return await _loadAllChunks(f, names);
+}
+
+async function loadFontByKey(key){
+  if (fontCache[key]) return fontCache[key];
+  if (fontLoadingPromises[key]) return fontLoadingPromises[key];
+
+  const parts = key.split(':');
+  if (parts.length < 3) throw new Error('非法 fontKey: ' + key);
+  const sizeStr = parts[parts.length - 1];
+  const storage = parts[0];
+  const family = parts.slice(1, parts.length - 1).join(':');
+  const size = parseInt(sizeStr);
+
+  const g = fontGroups.find(x => x.storage === storage && x.family === family);
+  if (!g) throw new Error('字体组不存在: ' + key);
+  const f = g.bySize[size];
+  if (!f) throw new Error('字体不存在: ' + key);
+
+  const promise = (async () => {
+    const result = await _loadFontImpl(f);
+    fontCache[key] = result;
+    return result;
+  })();
+  fontLoadingPromises[key] = promise;
+  try {
+    return await promise;
+  } finally {
+    delete fontLoadingPromises[key];
+  }
+}
+
+function charCode(font, ch){
+  if (font.isUnicode) return ch.codePointAt(0);
+  const code = ch.charCodeAt(0);
+  return code > 0xFF ? null : code;
+}
+
+function glyphOf(font, ch){
+  const code = charCode(font, ch);
+  if (code === null) return null;
+  return font.glyph(code);
+}
+
+async function preloadFont(font, text){
+  if (!font || !font.ensureChunksFor) return;
+  const codes = new Set();
+  for (const ch of text){
+    if (ch === '\n' || ch === '\r') continue;
+    const code = charCode(font, ch);
+    if (code !== null) codes.add(code);
+  }
+  await font.ensureChunksFor(codes);
+}
+
+function charAtVisual(text, visualIdx){
+  let cur = 0;
+  for (let i = 0; i < text.length; i++){
+    const code = text.codePointAt(i);
+    if (code === 10){ }
+    else {
+      if (cur === visualIdx) return String.fromCodePoint(code);
+      cur++;
+    }
+    if (code > 0xFFFF) i++;
+  }
+  return null;
+}
+
+function blitChar(buf, w, h, glyph, x, y, style, fontH){
+  const gw = glyph.w, gh = glyph.h, data = glyph.data;
+  if (gw === 0 || gh === 0) return;
+
+  const bold = !!style.bold;
+  const italic = !!style.italic;
+  const outlineSpec = style.outline;
+  const fgSpec = style.fg || fgColor;
+
+  const boldDx = bold ? 1 : 0;
+  const shearPx = italic ? Math.max(1, Math.floor(fontH / 8)) : 0;
+  const rb = Math.ceil(gw / 8);
+  const denom = Math.max(1, gh - 1);
+
+  const onSet = new Set();
+  const KEY = (px, py) => px * 10000 + py;
+
+  for (let row = 0; row < gh; row++){
+    const py = y + row;
+    if (py < 0 || py >= h) continue;
+    const offset = shearPx ? Math.floor((gh - 1 - row) * shearPx / denom) : 0;
+    const base = row * rb;
+    for (let bit = 0; bit < gw; bit++){
+      if (data[base + (bit >> 3)] & (0x80 >> (bit & 7))){
+        const px = x + offset + bit;
+        if (px >= 0 && px < w) onSet.add(KEY(px, py));
+        if (boldDx && px + boldDx >= 0 && px + boldDx < w) onSet.add(KEY(px + boldDx, py));
+      }
+    }
+  }
+
+  if (outlineSpec){
+    const expanded = new Set();
+    onSet.forEach(key => {
+      const px = Math.floor(key / 10000);
+      const py = key % 10000;
+      for (let dx = -1; dx <= 1; dx++){
+        for (let dy = -1; dy <= 1; dy++){
+          if (dx === 0 && dy === 0) continue;
+          const nx = px + dx, ny = py + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const nk = KEY(nx, ny);
+          if (!onSet.has(nk)) expanded.add(nk);
+        }
+      }
+    });
+    expanded.forEach(key => {
+      const px = Math.floor(key / 10000);
+      const py = key % 10000;
+      buf[py * w + px] = resolveColor(outlineSpec, px, py);
+    });
+  }
+
+  onSet.forEach(key => {
+    const px = Math.floor(key / 10000);
+    const py = key % 10000;
+    buf[py * w + px] = resolveColor(fgSpec, px, py);
+  });
+}
+
+function layoutTextLayer(text, charFontMap, defaultFont, innerW, innerH, opts){
+  const buf = new Uint8Array(innerW * innerH);
+  buf.fill(0xFF);
+
+  const lines = text.split('\n');
+  const lineCharStarts = [];
+  let ci = 0;
+  for (const line of lines){
+    lineCharStarts.push(ci);
+    ci += line.length;
+  }
+
+  const globalLS = opts.letterSpacing || 0;
+  const extras = opts.lineExtras || {};
+
+  const lineInfos = [];
+  let totalH = 0;
+  for (let li = 0; li < lines.length; li++){
+    const line = lines[li];
+    const baseIdx = lineCharStarts[li];
+    let lineMaxH = defaultFont.maxH;
+    const chars = [];
+
+    for (let cii = 0; cii < line.length; cii++){
+      const gidx = baseIdx + cii;
+      const f = charFontMap[gidx] || defaultFont;
+      const ch = line[cii];
+      const g = glyphOf(f, ch);
+      let advance;
+      if (!g || g.w === 0) advance = Math.floor(f.maxH / 2);
+      else advance = g.w;
+
+      const ov = perChar[gidx];
+      const ls = (ov && ov.letterSpacing !== undefined)
+        ? ov.letterSpacing : globalLS;
+
+      chars.push({ ch, font: f, glyph: g, advance, fontH: f.maxH, letterSpacing: ls });
+      if (f.maxH > lineMaxH) lineMaxH = f.maxH;
+    }
+
+    let lh = Math.max(0, Math.floor(lineMaxH * opts.lineHeight));
+    const ex = (li in extras) ? extras[li] : 0;
+    lh = Math.max(0, lh + ex);
+
+    lineInfos.push({ chars, lineMaxH, lh });
+    totalH += lh;
+  }
+
+  const availH = innerH - opts.marginTop - opts.marginBottom;
+  let cy0;
+  if (opts.valign === 'center') cy0 = opts.marginTop + Math.max(0, Math.floor((availH - totalH) / 2));
+  else if (opts.valign === 'bottom') cy0 = opts.marginTop + Math.max(0, availH - totalH);
+  else cy0 = opts.marginTop;
+
+  let cy = cy0;
+  for (let li = 0; li < lineInfos.length; li++){
+    const info = lineInfos[li];
+    let lineW = 0;
+    for (const c of info.chars) lineW += c.advance + c.letterSpacing;
+
+    let cx;
+    if (opts.align === 'center') cx = opts.marginLeft + Math.max(0, Math.floor((innerW - opts.marginLeft - opts.marginRight - lineW) / 2));
+    else if (opts.align === 'right') cx = innerW - opts.marginRight - lineW;
+    else cx = opts.marginLeft;
+
+    const baseIdx = lineCharStarts[li];
+    for (let cii = 0; cii < info.chars.length; cii++){
+      const c = info.chars[cii];
+      const gidx = baseIdx + cii;
+      let style = defaultStyle;
+      if (perChar[gidx]){
+        style = {
+          fg: perChar[gidx].fg !== undefined ? perChar[gidx].fg : fgColor,
+          bg: perChar[gidx].bg !== undefined ? perChar[gidx].bg : bgColor,
+          outline: perChar[gidx].outline !== undefined ? perChar[gidx].outline : outlineColor,
+          bold: perChar[gidx].bold !== undefined ? perChar[gidx].bold : defaultStyle.bold,
+          italic: perChar[gidx].italic !== undefined ? perChar[gidx].italic : defaultStyle.italic,
+          underline: perChar[gidx].underline !== undefined ? perChar[gidx].underline : defaultStyle.underline,
+          strikethrough: perChar[gidx].strikethrough !== undefined ? perChar[gidx].strikethrough : defaultStyle.strikethrough,
+        };
+      } else {
+        style = {
+          fg: fgColor, bg: bgColor, outline: outlineColor,
+          bold: defaultStyle.bold, italic: defaultStyle.italic,
+          underline: defaultStyle.underline, strikethrough: defaultStyle.strikethrough,
+        };
+      }
+
+      const charTop = cy + (info.lineMaxH - c.fontH);
+
+      if (c.glyph && c.glyph.w > 0){
+        blitChar(buf, innerW, innerH, c.glyph, cx, charTop, style, c.fontH);
+      }
+
+      if (style.underline){
+        const ulY = charTop + c.fontH - 2;
+        if (ulY >= 0 && ulY < innerH){
+          for (let x = cx; x < cx + c.advance; x++){
+            if (x >= 0 && x < innerW) buf[ulY * innerW + x] = resolveColor(style.fg, x, ulY);
+          }
+        }
+      }
+      if (style.strikethrough){
+        const stY = charTop + Math.floor(c.fontH / 2);
+        if (stY >= 0 && stY < innerH){
+          for (let x = cx; x < cx + c.advance; x++){
+            if (x >= 0 && x < innerW) buf[stY * innerW + x] = resolveColor(style.fg, x, stY);
+          }
+        }
+      }
+
+      cx += c.advance + c.letterSpacing;
+    }
+    cy += info.lh;
+  }
+
+  return buf;
+}
+
+function rotateBuf(buf, innerW, innerH, dir){
+  if (dir === 0) return { buf, w: innerW, h: innerH };
+  if (dir === 180){
+    const out = new Uint8Array(innerW * innerH);
+    for (let y = 0; y < innerH; y++){
+      for (let x = 0; x < innerW; x++){
+        out[(innerH - 1 - y) * innerW + (innerW - 1 - x)] = buf[y * innerW + x];
+      }
+    }
+    return { buf: out, w: innerW, h: innerH };
+  }
+  const outW = innerH, outH = innerW;
+  const out = new Uint8Array(outW * outH);
+  for (let y = 0; y < innerH; y++){
+    for (let x = 0; x < innerW; x++){
+      let nx, ny;
+      if (dir === 90){ nx = innerH - 1 - y; ny = x; }
+      else { nx = y; ny = innerW - 1 - x; }
+      out[ny * outW + nx] = buf[y * innerW + x];
+    }
+  }
+  return { buf: out, w: outW, h: outH };
+}
+
+function to4bpp(idxBuf, w, h){
+  const out = new Uint8Array((w * h) / 2);
+  let o = 0;
+  for (let i = 0; i < w * h; i += 2){
+    const hi = INDEX_MAP[idxBuf[i]];
+    const lo = INDEX_MAP[idxBuf[i + 1]];
+    out[o++] = (hi << 4) | lo;
+  }
+  return out;
+}
+
+function renderBinToCanvas(bin, canvas, cw, ch){
+  cw = cw || W;
+  ch = ch || H;
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(cw, ch);
+  const d = img.data;
+  const rowBytes = cw >> 1;
+  for (let y = 0; y < ch; y++){
+    const rowBase = y * rowBytes;
+    const pixBase = y * cw * 4;
+    for (let xb = 0; xb < rowBytes; xb++){
+      const b = bin[rowBase + xb];
+      const hi = (b >> 4) & 0xF;
+      const lo = b & 0xF;
+      const pi0 = IDX_REVERSE[hi];
+      const pi1 = IDX_REVERSE[lo];
+      const c0 = PALETTE_RGB[pi0 !== undefined ? pi0 : 0];
+      const c1 = PALETTE_RGB[pi1 !== undefined ? pi1 : 0];
+      const o0 = pixBase + xb * 8;
+      const o1 = o0 + 4;
+      d[o0] = c0[0]; d[o0+1] = c0[1]; d[o0+2] = c0[2]; d[o0+3] = 255;
+      d[o1] = c1[0]; d[o1+1] = c1[1]; d[o1+2] = c1[2]; d[o1+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function binToIndices(bin){
+  const out = new Uint8Array(W * H);
+  let k = 0;
+  for (let y = 0; y < H; y++){
+    for (let x = 0; x < W; x += 2){
+      const b = bin[k++];
+      const hi = (b >> 4) & 0xF;
+      const lo = b & 0xF;
+      out[y*W+x] = IDX_REVERSE[hi] !== undefined ? IDX_REVERSE[hi] : 0;
+      out[y*W+x+1] = IDX_REVERSE[lo] !== undefined ? IDX_REVERSE[lo] : 0;
+    }
+  }
+  return out;
+}
+
+function makePseudoSwatchCanvas(a, b, density){
+  const cv = document.createElement('canvas');
+  cv.width = 12; cv.height = 8;
+  cv.className = 'swatch';
+  const ctx = cv.getContext('2d');
+  for (let y = 0; y < 8; y++){
+    for (let x = 0; x < 12; x++){
+      const t = BAYER4[y & 3][x & 3];
+      const c = PALETTE_RGB[t < density ? a : b];
+      ctx.fillStyle = 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  return cv;
+}
+
+function buildColorPickers(){
+  const basic = $('basicGrid');
+  basic.innerHTML = '';
+  PALETTE_RGB.forEach((rgb, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'color-cell basic';
+    cell.dataset.kind = 'solid';
+    cell.dataset.idx = i;
+    cell.title = PALETTE_NAME[i];
+    const sw = document.createElement('div');
+    sw.className = 'swatch';
+    sw.style.background = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+    cell.appendChild(sw);
+    const lb = document.createElement('span');
+    lb.className = 'label'; lb.textContent = PALETTE_NAME[i];
+    cell.appendChild(lb);
+    cell.addEventListener('click', () => applyColorChoice({ type:'solid', idx:i }));
+    basic.appendChild(cell);
+  });
+
+  const pseudo = $('pseudoGrid');
+  pseudo.innerHTML = '';
+  PSEUDO_COMBOS.forEach(([a, b, label]) => {
+    DENSITIES.forEach((dens, di) => {
+      const cell = document.createElement('div');
+      cell.className = 'color-cell pseudo';
+      cell.dataset.kind = 'pseudo';
+      cell.dataset.a = a; cell.dataset.b = b; cell.dataset.density = dens;
+      cell.title = label + ' ' + DENSITY_LABELS[di];
+      cell.appendChild(makePseudoSwatchCanvas(a, b, dens));
+      const lb = document.createElement('span');
+      lb.className = 'label'; lb.textContent = label;
+      cell.appendChild(lb);
+      cell.addEventListener('click', () => applyColorChoice({ type:'pseudo', a, b, density:dens }));
+      pseudo.appendChild(cell);
+    });
+  });
+}
+
+function refreshColorActive(){
+  document.querySelectorAll('.color-cell').forEach(el => el.classList.remove('active'));
+
+  let active;
+  let pc = null;
+  if (selectedChars.size > 0){
+    pc = perChar[[...selectedChars][0]] || null;
+  }
+  if (pc){
+    if (colorTarget === 'fg')      active = pc.fg !== undefined ? pc.fg : fgColor;
+    else if (colorTarget === 'bg') active = pc.bg !== undefined ? pc.bg : bgColor;
+    else                           active = pc.outline !== undefined ? pc.outline : outlineColor;
+  } else {
+    active = colorTarget === 'fg' ? fgColor
+           : colorTarget === 'bg' ? bgColor
+           : outlineColor;
+  }
+
+  if (active){
+    if (active.type === 'solid'){
+      document.querySelectorAll('.color-cell[data-kind="solid"]').forEach(el => {
+        if (parseInt(el.dataset.idx) === active.idx) el.classList.add('active');
+      });
+    } else {
+      document.querySelectorAll('.color-cell[data-kind="pseudo"]').forEach(el => {
+        if (parseInt(el.dataset.a) === active.a
+            && parseInt(el.dataset.b) === active.b
+            && parseInt(el.dataset.density) === active.density){
+          el.classList.add('active');
+        }
+      });
+    }
+  }
+
+  let info = '全局：前景 ' + fmtColor(fgColor)
+           + ' / 背景 ' + fmtColor(bgColor)
+           + ' / 描边 ' + fmtColor(outlineColor);
+  if (pc){
+    info += '   |   选中：前景 '
+          + fmtColor(pc.fg !== undefined ? pc.fg : fgColor)
+          + ' / 背景 ' + fmtColor(pc.bg !== undefined ? pc.bg : bgColor)
+          + ' / 描边 ' + fmtColor(pc.outline !== undefined ? pc.outline : outlineColor);
+  }
+  $('currentColorInfo').textContent = info;
+}
+
+function applyColorChoice(color){
+  const hasSel = selectedChars.size > 0;
+
+  if (colorTarget === 'outline' && color === null){
+    if (hasSel){
+      selectedChars.forEach(idx => {
+        if (!perChar[idx]) perChar[idx] = {};
+        perChar[idx].outline = null;
+      });
+    } else {
+      outlineColor = null;
+    }
+  } else {
+    const copy = { ...color };
+    if (hasSel){
+      selectedChars.forEach(idx => {
+        if (!perChar[idx]) perChar[idx] = {};
+        if (colorTarget === 'fg') perChar[idx].fg = copy;
+        else if (colorTarget === 'bg') perChar[idx].bg = copy;
+        else perChar[idx].outline = copy;
+      });
+    } else {
+      if (colorTarget === 'fg') fgColor = copy;
+      else if (colorTarget === 'bg') bgColor = copy;
+      else outlineColor = copy;
+    }
+  }
+
+  refreshColorActive();
+  renderChars();
+  scheduleRender();
+}
+
+function getCharList(){
+  const text = $('textInput').value;
+  const list = [];
+  let visualIdx = 0;
+  for (let i = 0; i < text.length; i++){
+    const code = text.codePointAt(i);
+    const ch = String.fromCodePoint(code);
+    if (code === 10){
+      list.push({ ch: '\n', idx: -1, isNewline: true });
+    } else {
+      list.push({ ch, idx: visualIdx, isNewline: false });
+      visualIdx++;
+    }
+    if (code > 0xFFFF) i++;
+  }
+  return list;
+}
+
+function updateSelectionInfo(){
+  const infoEl = $('selInfo');
+  if (!infoEl) return;
+  const n = selectedChars.size;
+  if (n === 0){
+    infoEl.textContent = '未选中任何字符（更改将作用于全局默认）';
+    return;
+  }
+  const arr = [...selectedChars].sort((a, b) => a - b);
+  const ranges = [];
+  let start = arr[0], prev = arr[0];
+  for (let i = 1; i < arr.length; i++){
+    if (arr[i] === prev + 1){
+      prev = arr[i];
+    } else {
+      ranges.push(start === prev ? String(start) : (start + '-' + prev));
+      start = arr[i];
+      prev = arr[i];
+    }
+  }
+  ranges.push(start === prev ? String(start) : (start + '-' + prev));
+  let text = '已选中 ' + n + ' 个字符';
+  if (ranges.length <= 6){
+    text += '（索引 ' + ranges.join(', ') + '）';
+  } else {
+    text += '（索引 ' + ranges.slice(0, 6).join(', ') + '…共 ' + ranges.length + ' 段）';
+  }
+  infoEl.textContent = text;
+}
+
+function renderChars(){
+  const strip = $('charsStrip');
+  strip.innerHTML = '';
+  const list = getCharList();
+  list.forEach(({ch, idx, isNewline}) => {
+    const tile = document.createElement('div');
+    tile.className = 'char-tile';
+
+    if (isNewline){
+      tile.classList.add('newline');
+      tile.textContent = '↵';
+      tile.title = '换行（不可编辑）';
+      strip.appendChild(tile);
+      return;
+    }
+
+    if (ch === ' '){
+      tile.textContent = '␣';
+      tile.title = '空格 (索引 ' + idx + ')';
+    } else {
+      tile.textContent = ch;
+      tile.title = '索引 ' + idx;
+    }
+
+    if (selectedChars.has(idx)) tile.classList.add('selected');
+    if (perChar[idx]){
+      tile.classList.add('has-style');
+      const p = perChar[idx];
+      let icon = '';
+      if (p.bold) icon += 'B';
+      if (p.italic) icon += 'I';
+      if (p.underline) icon += 'U';
+      if (p.strikethrough) icon += 'S';
+      if (icon){
+        const ic = document.createElement('span');
+        ic.className = 'style-icon';
+        ic.textContent = icon;
+        tile.appendChild(ic);
+      }
+      if (p.fg !== undefined){
+        const dot = document.createElement('span');
+        dot.className = 'color-dot';
+        dot.style.background = specToCss(p.fg);
+        tile.appendChild(dot);
+      }
+      if (p.fontKey) tile.classList.add('has-font');
+    }
+
+    tile.addEventListener('click', (e) => {
+      if (e.shiftKey && lastClickIdx >= 0 && lastClickIdx !== idx){
+        const a = Math.min(lastClickIdx, idx);
+        const b = Math.max(lastClickIdx, idx);
+        selectedChars.clear();
+        for (let i = a; i <= b; i++) selectedChars.add(i);
+      } else if (e.ctrlKey || e.metaKey){
+        if (selectedChars.has(idx)) selectedChars.delete(idx);
+        else selectedChars.add(idx);
+        lastClickIdx = idx;
+      } else {
+        if (selectedChars.has(idx) && selectedChars.size === 1){
+          selectedChars.delete(idx);
+          lastClickIdx = -1;
+        } else {
+          selectedChars.clear();
+          selectedChars.add(idx);
+          lastClickIdx = idx;
+        }
+      }
+      renderChars();
+      updateStyleChecks();
+      refreshColorActive();
+      refreshCharFontBox();
+    });
+    strip.appendChild(tile);
+  });
+  updateSelectionInfo();
+}
+
+function updateStyleChecks(){
+  let style = {
+    bold: defaultStyle.bold, italic: defaultStyle.italic,
+    underline: defaultStyle.underline, strikethrough: defaultStyle.strikethrough
+  };
+  if (selectedChars.size > 0){
+    const firstIdx = [...selectedChars][0];
+    if (perChar[firstIdx]){
+      style = {
+        bold: perChar[firstIdx].bold !== undefined ? perChar[firstIdx].bold : style.bold,
+        italic: perChar[firstIdx].italic !== undefined ? perChar[firstIdx].italic : style.italic,
+        underline: perChar[firstIdx].underline !== undefined ? perChar[firstIdx].underline : style.underline,
+        strikethrough: perChar[firstIdx].strikethrough !== undefined ? perChar[firstIdx].strikethrough : style.strikethrough,
+      };
+    }
+  }
+  $('boldCheck').checked = !!style.bold;
+  $('italicCheck').checked = !!style.italic;
+  $('underlineCheck').checked = !!style.underline;
+  $('strikeCheck').checked = !!style.strikethrough;
+}
+
+function refreshCharFontBox(){
+  const box = $('charFontBox');
+  const sel = $('charFontSelect');
+  if (selectedChars.size === 0){
+    box.classList.remove('show');
+    return;
+  }
+  box.classList.add('show');
+
+  sel.innerHTML = '<option value="">（使用全局）</option>';
+  fontGroups.forEach(g => {
+    g.sizes.forEach(s => {
+      const opt = document.createElement('option');
+      const key = fontKeyOfGroupSize(g.storage, g.family, s);
+      opt.value = key;
+      const tag = g.storage === 'sd' ? '[SD]' : '[Flash]';
+      opt.textContent = tag + ' ' + g.family + ' ' + s + 'px';
+      sel.appendChild(opt);
+    });
+  });
+
+  const firstIdx = [...selectedChars][0];
+  const ov = perChar[firstIdx];
+  const curKey = ov && ov.fontKey ? ov.fontKey : '';
+  if ([...sel.options].some(o => o.value === curKey)){
+    sel.value = curKey;
+  } else {
+    sel.value = '';
+  }
+
+  // 回填逐字符字间距
+  const lsInput = $('charLetterSpacing');
+  const curLs = ov && ov.letterSpacing !== undefined ? ov.letterSpacing : '';
+  lsInput.value = curLs === '' ? '' : String(curLs);
+  lsInput.placeholder = '留空跟随全局';
+}
+
+async function loadBgsList(){
+  try{
+    const r = await fetch('/bgs/list', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    bgsList = d.slots || [];
+    bgsSdActive = !!d.sd_active;
+    return d;
+  } catch(e){
+    bgsList = [];
+    bgsSdActive = false;
+    return null;
+  }
+}
+
+function storageLabel(s){ return s === 'sd' ? 'SD' : 'Flash'; }
+
+function makeThumbFrom4bpp(buf, tw, th){
+  const img = new ImageData(tw, th);
+  const d = img.data;
+  const rowBytes = tw / 2;
+  for (let y = 0; y < th; y++){
+    const rowBase = y * rowBytes;
+    const pixBase = y * tw * 4;
+    for (let xb = 0; xb < rowBytes; xb++){
+      const b = buf[rowBase + xb];
+      const hi = (b >> 4) & 0xF;
+      const lo = b & 0xF;
+      const pi0 = IDX_REVERSE[hi];
+      const pi1 = IDX_REVERSE[lo];
+      const c0 = PALETTE_RGB[pi0 !== undefined ? pi0 : 0];
+      const c1 = PALETTE_RGB[pi1 !== undefined ? pi1 : 0];
+      const o0 = pixBase + xb * 8;
+      const o1 = o0 + 4;
+      d[o0] = c0[0]; d[o0+1] = c0[1]; d[o0+2] = c0[2]; d[o0+3] = 255;
+      d[o1] = c1[0]; d[o1+1] = c1[1]; d[o1+2] = c1[2]; d[o1+3] = 255;
+    }
+  }
+  return img;
+}
+
+async function loadBgThumb(slot, canvas){
+  const key = slot.storage + ':' + slot.index;
+  if (bgThumbCache[key]){
+    canvas.width = THUMB_W;
+    canvas.height = THUMB_H;
+    canvas.getContext('2d').putImageData(bgThumbCache[key], 0, 0);
+    canvas.style.width = '100%';
+    canvas.classList.remove('placeholder');
+    return;
+  }
+  try{
+    const url = '/bgs/thumb/' + slot.index + '?storage=' + slot.storage;
+    const r = await fetch(url, {cache:'force-cache'});
+    if (!r.ok) return;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (buf.length !== THUMB_BYTES) return;
+    const imgData = makeThumbFrom4bpp(buf, THUMB_W, THUMB_H);
+    bgThumbCache[key] = imgData;
+    canvas.width = THUMB_W;
+    canvas.height = THUMB_H;
+    canvas.getContext('2d').putImageData(imgData, 0, 0);
+    canvas.style.width = '100%';
+    canvas.classList.remove('placeholder');
+  } catch(e){
+    console.warn('bg thumb fail', e);
+  }
+}
+
+function renderBgsGrid(){
+  const grid = $('bgsGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  const noneCell = document.createElement('div');
+  noneCell.className = 'bg-cell none' + (selectedBgStorage === null ? ' active' : '');
+  const noneLbl = document.createElement('div');
+  noneLbl.className = 'bg-label';
+  noneLbl.textContent = '无背景';
+  noneCell.appendChild(noneLbl);
+  noneCell.addEventListener('click', () => selectBg(null, -1));
+  grid.appendChild(noneCell);
+
+  if (!bgsList.length){
+    const hint = document.createElement('div');
+    hint.style.cssText = 'grid-column:2/-1;color:var(--subtle);font-size:11px;padding:8px;line-height:1.4;';
+    hint.textContent = '暂无背景图，点下方"上传新背景"添加。';
+    grid.appendChild(hint);
+    return;
+  }
+
+  bgsList.forEach(slot => {
+    const cell = document.createElement('div');
+    const isSel = (selectedBgStorage === slot.storage && selectedBgIndex === slot.index);
+    cell.className = 'bg-cell' + (isSel ? ' active' : '');
+    cell.dataset.storage = slot.storage;
+    cell.dataset.index = String(slot.index);
+
+    const cvs = document.createElement('canvas');
+    cvs.className = 'bg-thumb placeholder';
+    cvs.width = THUMB_W;
+    cvs.height = THUMB_H;
+    cvs.dataset.slot = String(slot.index);
+    cvs.dataset.storage = slot.storage;
+    cvs.dataset.note = slot.note || '';
+    cell.appendChild(cvs);
+
+    const lbl = document.createElement('div');
+    lbl.className = 'bg-label';
+    lbl.innerHTML = '[' + storageLabel(slot.storage) + '] ' + (slot.index + 1);
+    cell.appendChild(lbl);
+
+    if (slot.note){
+      const note = document.createElement('div');
+      note.className = 'bg-note';
+      note.textContent = slot.note;
+      note.title = slot.note;
+      cell.appendChild(note);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'bg-actions';
+
+    const bNote = document.createElement('button');
+    bNote.textContent = '备注';
+    bNote.onclick = (e) => { e.stopPropagation(); editBgNote(slot); };
+    actions.appendChild(bNote);
+
+    const bDel = document.createElement('button');
+    bDel.textContent = '删';
+    bDel.className = 'danger';
+    bDel.onclick = (e) => { e.stopPropagation(); deleteBg(slot); };
+    actions.appendChild(bDel);
+
+    cell.appendChild(actions);
+    if (thumbObserver){
+      thumbObserver.observe(cvs);
+    } else {
+      enqueueBgThumb(cvs);
+    }
+    cell.addEventListener('click', () => selectBg(slot.storage, slot.index));
+    grid.appendChild(cell);
+  });
+}
+
+function updateBgsGridActive(){
+  const grid = $('bgsGrid');
+  if (!grid) return;
+  const none = grid.querySelector('.bg-cell.none');
+  if (none) none.classList.toggle('active', selectedBgStorage === null);
+  grid.querySelectorAll('.bg-cell[data-storage]').forEach(cell => {
+    const isSel = (cell.dataset.storage === selectedBgStorage &&
+                   parseInt(cell.dataset.index) === selectedBgIndex);
+    cell.classList.toggle('active', isSel);
+  });
+}
+
+async function selectBg(storage, index){
+  selectedBgStorage = storage;
+  selectedBgIndex = index;
+  updateBgsGridActive();
+  updateBgHint();
+
+  if (storage === null || index < 0){
+    bgImageBuf = null;
+    bgImageSlot = -1;
+    bgImageStorage = null;
+    scheduleRender();
+    return;
+  }
+
+  if (bgImageSlot === index && bgImageStorage === storage && bgImageBuf){
+    scheduleRender();
+    return;
+  }
+
+  try {
+    const r = await fetch('/bgs/get/' + index + '?storage=' + storage, {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const bin = new Uint8Array(await r.arrayBuffer());
+    if (bin.length !== FRAME_BYTES) throw new Error('大小异常');
+    bgImageBuf = binToIndices(bin);
+    bgImageSlot = index;
+    bgImageStorage = storage;
+    setStatus('背景 ' + storageLabel(storage) + ' ' + (index + 1) + ' 已加载', 'ok');
+    scheduleRender();
+  } catch(e){
+    bgImageBuf = null;
+    bgImageSlot = -1;
+    setStatus('加载背景失败：' + e.message, 'err');
+  }
+}
+
+function updateBgHint(){
+  const hint = $('bgHint');
+  if (!hint) return;
+  if (selectedBgStorage === null){
+    hint.textContent = '当前：无背景（使用背景色填充）。选背景后文字叠在图上，旋转仅作用于文字。';
+    return;
+  }
+  const slot = bgsList.find(s => s.index === selectedBgIndex && s.storage === selectedBgStorage) || {};
+  const note = slot.note || '';
+  let msg = '当前背景：' + storageLabel(selectedBgStorage) + ' 槽位 ' + (selectedBgIndex + 1);
+  if (note) msg += '（' + note + '）';
+  if (direction !== 0) msg += ' · 背景按 0° 铺底，旋转只作用于文字层';
+  hint.textContent = msg;
+}
+
+async function editBgNote(slot){
+  const cur = slot.note || '';
+  const val = prompt('修改 ' + storageLabel(slot.storage) + ' 背景 ' +
+    (slot.index + 1) + ' 的备注（留空清除）', cur);
+  if (val === null) return;
+  const note = val.slice(0, MAX_NOTE).trim();
+  try{
+    const r = await fetch('/bgs/note/' + slot.index + '?storage=' + slot.storage, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({note})
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    await loadBgsList();
+    renderBgsGrid();
+    updateBgHint();
+    setStatus('备注已保存', 'ok');
+  } catch(e){
+    setStatus('保存备注失败：' + e.message, 'err');
+  }
+}
+
+async function deleteBg(slot){
+  if (!confirm('删除 ' + storageLabel(slot.storage) + ' 背景 ' +
+    (slot.index + 1) + ' 及备注？')) return;
+  try{
+    const r = await fetch('/bgs/delete/' + slot.index + '?storage=' + slot.storage, {method:'POST'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (selectedBgStorage === slot.storage && selectedBgIndex === slot.index){
+      selectedBgStorage = null;
+      selectedBgIndex = -1;
+      bgImageBuf = null;
+      bgImageSlot = -1;
+      bgImageStorage = null;
+    }
+    const key = slot.storage + ':' + slot.index;
+    delete bgThumbCache[key];
+    await loadBgsList();
+    renderBgsGrid();
+    updateBgHint();
+    scheduleRender();
+    setStatus('背景已删除', 'ok');
+  } catch(e){
+    setStatus('删除失败：' + e.message, 'err');
+  }
+}
+
+function askStorage(title, sdActive, info){
+  return new Promise(resolve => {
+    if (!sdActive){
+      if (confirm(title + '\n\n保存到 Flash？（SD 未挂载）')) resolve('flash');
+      else resolve(null);
+      return;
+    }
+    const sdFree = info && info.free_sd != null
+      ? 'SD 剩余 ' + (info.free_sd/1024).toFixed(0) + ' KB'
+      : 'SD';
+    const flashFree = info && info.free_flash != null
+      ? 'Flash 剩余 ' + (info.free_flash/1024).toFixed(0) + ' KB'
+      : 'Flash';
+    const ans = prompt(title + '\n\n1 = SD（' + sdFree + '）\n2 = Flash（' +
+      flashFree + '）\n0 = 取消', '1');
+    if (ans === '1') resolve('sd');
+    else if (ans === '2') resolve('flash');
+    else resolve(null);
+  });
+}
+
+function scheduleRender(){
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(doRender, 180);
+}
+
+async function doRender(){
+  if (rendering){
+    pendingRender = true;
+    return;
+  }
+  rendering = true;
+  try {
+    setStatus('渲染预览中…', 'busy');
+
+    const curFont = getCurrentFontInfo();
+    if (!curFont) throw new Error('未选择字体');
+    const defaultFont = await loadFontByKey(fontKey(curFont));
+    if (!defaultFont) throw new Error('字体加载失败');
+
+    const text = $('textInput').value;
+    const charFontMap = {};
+    for (const [idx, ov] of Object.entries(perChar)){
+      if (ov.fontKey){
+        try {
+          const cf = await loadFontByKey(ov.fontKey);
+          charFontMap[parseInt(idx)] = cf;
+        } catch(e){}
+      }
+    }
+
+    await preloadFont(defaultFont, text);
+    for (const [idxStr, cf] of Object.entries(charFontMap)){
+      const ch = charAtVisual(text, parseInt(idxStr));
+      if (ch) await preloadFont(cf, ch);
+    }
+
+    const innerW = (direction === 90 || direction === 270) ? H : W;
+    const innerH = (direction === 90 || direction === 270) ? W : H;
+
+    const opts = {
+      lineHeight: Math.max(0, parseFloat($('lineHeight').value) || 0),
+      // 与 doApply 保持一致：整数
+      letterSpacing: parseInt($('letterSpacing').value, 10) || 0,
+      lineExtras,
+      align: $('alignSelect').value,
+      valign: $('valignSelect').value,
+      marginTop: parseInt($('marginTop').value) || 0,
+      marginBottom: parseInt($('marginBottom').value) || 0,
+      marginLeft: parseInt($('marginLeft').value) || 0,
+      marginRight: parseInt($('marginRight').value) || 0,
+    };
+
+    const textLayer = layoutTextLayer(text, charFontMap, defaultFont, innerW, innerH, opts);
+    const rot = rotateBuf(textLayer, innerW, innerH, direction);
+    const bgLayer = makeBackgroundLayer();
+
+    const outIdx = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++){
+      outIdx[i] = (rot.buf[i] === 0xFF) ? bgLayer[i] : rot.buf[i];
+    }
+
+    lastBin = to4bpp(outIdx, W, H);
+    renderBinToCanvas(lastBin, $('previewCanvas'));
+    $('applyBtn').disabled = false;
+    setStatus('预览已生成（' + lastBin.length + ' 字节）', 'ok');
+  } catch(e){
+    setStatus('渲染失败：' + e.message, 'err');
+    $('applyBtn').disabled = true;
+    lastBin = null;
+  } finally {
+    rendering = false;
+    if (pendingRender){
+      pendingRender = false;
+      setTimeout(doRender, 0);
+    }
+  }
+}
+
+function makeBackgroundLayer(){
+  const bg = new Uint8Array(W * H);
+  if (bgImageBuf && bgImageBuf.length === W * H){
+    bg.set(bgImageBuf);
+  } else {
+    for (let y = 0; y < H; y++){
+      for (let x = 0; x < W; x++){
+        bg[y * W + x] = resolveColor(bgColor, x, y);
+      }
+    }
+  }
+  return bg;
+}
+
+async function doApply(){
+  const perCharPayload = {};
+
+  const fontKeySet = new Set();
+  for (const style of Object.values(perChar)){
+    if (style.fontKey) fontKeySet.add(style.fontKey);
+  }
+  const MAX_FONT_KINDS = 2;
+  let allowedKeys = null;
+  if (fontKeySet.size > MAX_FONT_KINDS){
+    const keys = [...fontKeySet].slice(0, MAX_FONT_KINDS);
+    allowedKeys = new Set(keys);
+  }
+
+  for (const [idx, style] of Object.entries(perChar)){
+    const item = {};
+    if (style.fg !== undefined) item.fg = specToJson(style.fg);
+    if (style.bg !== undefined) item.bg = specToJson(style.bg);
+    if (style.outline !== undefined) {
+      item.outline = style.outline === null ? null : specToJson(style.outline);
+    }
+    if (style.bold !== undefined) item.bold = !!style.bold;
+    if (style.italic !== undefined) item.italic = !!style.italic;
+    if (style.underline !== undefined) item.underline = !!style.underline;
+    if (style.strikethrough !== undefined) item.strikethrough = !!style.strikethrough;
+    if (style.letterSpacing !== undefined){
+      const v = parseInt(style.letterSpacing, 10);
+      if (!isNaN(v)) item.letterSpacing = v;
+    }
+    if (style.fontKey){
+      if (!(allowedKeys && !allowedKeys.has(style.fontKey))){
+        const parts = style.fontKey.split(':');
+        const sizeStr = parts[parts.length - 1];
+        const storage = parts[0];
+        const family = parts.slice(1, parts.length - 1).join(':');
+        const size = parseInt(sizeStr);
+        const g = fontGroups.find(x => x.storage === storage && x.family === family);
+        if (g && g.bySize[size]){
+          const paths = buildFontPaths(g.bySize[size]);
+          if (paths) item.font_paths = paths;
+        }
+      }
+    }
+    perCharPayload[String(idx)] = item;
+  }
+
+  const globalLetterSpacing = parseInt($('letterSpacing').value, 10) || 0;
+
+  const defaultStylePayload = {
+    fg: specToJson(fgColor),
+    bg: specToJson(bgColor),
+    outline: outlineColor === null ? null : specToJson(outlineColor),
+    bold: !!defaultStyle.bold,
+    italic: !!defaultStyle.italic,
+    underline: !!defaultStyle.underline,
+    strikethrough: !!defaultStyle.strikethrough,
+    letter_spacing: globalLetterSpacing,
+  };
+
+  const f = getCurrentFontInfo();
+  const defaultFontPaths = f ? buildFontPaths(f) : null;
+
+  if (!defaultFontPaths || !defaultFontPaths.length){
+    setStatus('错误：无法构造字体路径。', 'err');
+    return;
+  }
+
+  const lineExtrasPayload = Object.keys(lineExtras).length > 0
+    ? { ...lineExtras } : null;
+
+  const payload = {
+    text: $('textInput').value,
+    size: currentSize,
+    direction: direction,
+    per_char: perCharPayload,
+    default_style: defaultStylePayload,
+    align: $('alignSelect').value,
+    valign: $('valignSelect').value,
+    line_height: Math.max(0, parseFloat($('lineHeight').value) || 0),
+    line_extras: lineExtrasPayload,
+    margin_top: parseInt($('marginTop').value) || 0,
+    margin_bottom: parseInt($('marginBottom').value) || 0,
+    margin_left: parseInt($('marginLeft').value) || 0,
+    margin_right: parseInt($('marginRight').value) || 0,
+    stream: true,
+    font_paths: defaultFontPaths,
+    background: (selectedBgIndex >= 0 && selectedBgStorage)
+      ? (selectedBgStorage === 'sd'
+          ? ('/sd/e6/bgs/' + selectedBgIndex + '.bin')
+          : ('/bgs/' + selectedBgIndex + '.bin'))
+      : null,
+  };
+
+  $('applyBtn').disabled = true;
+  setStatus('设备渲染中，请稍候…', 'busy');
+
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 600000);
+    const resp = await fetch('/text/render', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+      signal: ctrl.signal
+    });
+    clearTimeout(t);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+    if (data.started) {
+      setStatus('已发送渲染指令 ✓  屏幕约 30~120 秒后更新，请查看屏幕确认。', 'ok');
+    } else if (data.ok) {
+      setStatus('已显示到屏幕 ✓', 'ok');
+    } else {
+      throw new Error(data.error || '未知错误');
+    }
+  } catch(e){
+    if (e.name === 'AbortError'){
+      setStatus('请求超时（>10 分钟）。屏幕可能已显示成功，请查看屏幕确认。', 'err');
+    } else {
+      setStatus('上传失败：' + e.message, 'err');
+    }
+  } finally {
+    $('applyBtn').disabled = !lastBin;
+  }
+}
+
+function bindEvents(){
+  document.querySelectorAll('.color-mode button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.clear === '1'){
+        outlineColor = null;
+        if (selectedChars.size > 0){
+          selectedChars.forEach(idx => {
+            if (!perChar[idx]) perChar[idx] = {};
+            perChar[idx].outline = null;
+          });
+        }
+        colorTarget = 'outline';
+        document.querySelectorAll('.color-mode button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        refreshColorActive();
+        renderChars();
+        scheduleRender();
+        return;
+      }
+      colorTarget = btn.dataset.target;
+      document.querySelectorAll('.color-mode button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      refreshColorActive();
+    });
+  });
+
+  $('textInput').addEventListener('input', () => {
+    const t = $('textInput').value;
+    let n = 0;
+    for (let i = 0; i < t.length; i++) n++;
+    $('charCount').textContent = n;
+    selectedChars.clear();
+    perChar = {};
+    lastClickIdx = -1;
+
+    const lineCount = t.split('\n').length;
+    for (const k in lineExtras){
+      if (parseInt(k, 10) >= lineCount) delete lineExtras[k];
+    }
+
+    renderChars();
+    updateStyleChecks();
+    refreshCharFontBox();
+    renderLineSettings();
+    scheduleRender();
+  });
+
+  $('fontFamilySelect').addEventListener('change', () => {
+    currentFontGroupIdx = parseInt($('fontFamilySelect').value) || 0;
+    rebuildSizeSelect();
+    scheduleRender();
+  });
+
+  $('sizeSelect').addEventListener('change', () => {
+    currentSize = parseInt($('sizeSelect').value);
+    scheduleRender();
+  });
+
+  $('directionSelect').addEventListener('change', () => {
+    direction = parseInt($('directionSelect').value);
+    updateBgHint();
+    scheduleRender();
+  });
+
+  ['lineHeight','letterSpacing',
+   'alignSelect','valignSelect','marginTop','marginBottom','marginLeft','marginRight']
+    .forEach(id => {
+      $(id).addEventListener('input', scheduleRender);
+      $(id).addEventListener('change', scheduleRender);
+    });
+
+  const STYLE_FIELD_MAP = {
+    boldCheck: 'bold',
+    italicCheck: 'italic',
+    underlineCheck: 'underline',
+    strikeCheck: 'strikethrough'
+  };
+  ['boldCheck','italicCheck','underlineCheck','strikeCheck'].forEach(id => {
+    $(id).addEventListener('change', () => {
+      const field = STYLE_FIELD_MAP[id];
+      const val = $(id).checked;
+      if (selectedChars.size > 0){
+        selectedChars.forEach(idx => {
+          if (!perChar[idx]) perChar[idx] = {};
+          perChar[idx][field] = val;
+        });
+      } else {
+        defaultStyle[field] = val;
+      }
+      renderChars();
+      refreshColorActive();
+      scheduleRender();
+    });
+  });
+
+  $('charFontSelect').addEventListener('change', () => {
+    if (selectedChars.size === 0) return;
+    const key = $('charFontSelect').value;
+    selectedChars.forEach(idx => {
+      if (!perChar[idx]) perChar[idx] = {};
+      if (key) perChar[idx].fontKey = key;
+      else delete perChar[idx].fontKey;
+    });
+    renderChars();
+    scheduleRender();
+  });
+
+  $('charLetterSpacing').addEventListener('input', () => {
+    if (selectedChars.size === 0) return;
+    const raw = $('charLetterSpacing').value.trim();
+    const v = raw === '' ? null : parseInt(raw, 10);
+    selectedChars.forEach(idx => {
+      if (!perChar[idx]) perChar[idx] = {};
+      if (v === null || isNaN(v)) delete perChar[idx].letterSpacing;
+      else perChar[idx].letterSpacing = v;
+    });
+    renderChars();
+    scheduleRender();
+  });
+
+  $('selectAllBtn').addEventListener('click', () => {
+    const list = getCharList();
+    selectedChars.clear();
+    list.forEach(c => { if (!c.isNewline) selectedChars.add(c.idx); });
+    lastClickIdx = -1;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    setStatus('已全选 ' + selectedChars.size + ' 个字符', 'ok');
+  });
+
+  $('invertSelBtn').addEventListener('click', () => {
+    const list = getCharList();
+    const newSet = new Set();
+    let total = 0;
+    list.forEach(c => {
+      if (!c.isNewline){
+        total++;
+        if (!selectedChars.has(c.idx)) newSet.add(c.idx);
+      }
+    });
+    const prev = selectedChars.size;
+    selectedChars = newSet;
+    lastClickIdx = -1;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    setStatus('反向选择：' + prev + ' → ' + selectedChars.size + ' / ' + total, 'ok');
+  });
+
+  $('clearSelBtn').addEventListener('click', () => {
+    selectedChars.clear();
+    lastClickIdx = -1;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+  });
+
+  $('selectRangeBtn').addEventListener('click', () => {
+    const startVal = parseInt($('selStart').value, 10);
+    const endVal = parseInt($('selEnd').value, 10);
+    if (isNaN(startVal) || isNaN(endVal)){
+      setStatus('请输入起始和结束索引（≥0）', 'err');
+      return;
+    }
+    const a = Math.min(startVal, endVal);
+    const b = Math.max(startVal, endVal);
+    const list = getCharList();
+    const valid = new Set();
+    list.forEach(c => { if (!c.isNewline) valid.add(c.idx); });
+    selectedChars.clear();
+    for (let i = a; i <= b; i++){
+      if (valid.has(i)) selectedChars.add(i);
+    }
+    lastClickIdx = b;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    if (selectedChars.size === 0){
+      setStatus('索引 ' + a + '–' + b + ' 内没有可选中字符', 'err');
+    } else {
+      setStatus('已选中索引 ' + a + '–' + b + '（' + selectedChars.size + ' 个字符）', 'ok');
+    }
+  });
+
+  $('selectSameBtn').addEventListener('click', () => {
+    if (selectedChars.size === 0){
+      setStatus('请先选中至少一个字符', 'err');
+      return;
+    }
+    const list = getCharList();
+    const charValues = new Set();
+    list.forEach(c => {
+      if (!c.isNewline && selectedChars.has(c.idx)) charValues.add(c.ch);
+    });
+    if (charValues.size === 0){
+      setStatus('无法获取选中字符内容', 'err');
+      return;
+    }
+    const before = selectedChars.size;
+    const newSet = new Set(selectedChars);
+    list.forEach(c => {
+      if (!c.isNewline && charValues.has(c.ch)) newSet.add(c.idx);
+    });
+    selectedChars = newSet;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    const added = newSet.size - before;
+    if (added === 0){
+      setStatus('没有找到更多相同字符', '');
+    } else {
+      const sample = [...charValues].slice(0, 6).join('');
+      setStatus('扩展到相同字符「' + sample + (charValues.size > 6 ? '…' : '') + '」：新增 ' + added + ' 个，共 ' + newSet.size + ' 个', 'ok');
+    }
+  });
+
+  $('clearSelStyle').addEventListener('click', () => {
+    if (selectedChars.size === 0){
+      setStatus('未选中任何字符', 'err');
+      return;
+    }
+    selectedChars.forEach(idx => delete perChar[idx]);
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    scheduleRender();
+  });
+
+  $('clearAllStyle').addEventListener('click', () => {
+    perChar = {};
+    selectedChars.clear();
+    lastClickIdx = -1;
+    defaultStyle = { bold:false, italic:false, underline:false, strikethrough:false };
+    fgColor = { type:'solid', idx:0 };
+    bgColor = { type:'solid', idx:1 };
+    outlineColor = null;
+    colorTarget = 'fg';
+    document.querySelectorAll('.color-mode button').forEach(b => b.classList.remove('active'));
+    document.querySelector('.color-mode button[data-target="fg"]').classList.add('active');
+    refreshColorActive();
+    renderChars();
+    updateStyleChecks();
+    refreshCharFontBox();
+    scheduleRender();
+    setStatus('已全部重置', 'ok');
+  });
+
+  $('refreshBtn').addEventListener('click', () => doRender());
+  $('applyBtn').addEventListener('click', doApply);
+
+  $('uploadBgBtn').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.bin';
+    input.onchange = async () => {
+      const f = input.files[0];
+      if (!f) return;
+      const buf = await f.arrayBuffer();
+      if (buf.byteLength !== FRAME_BYTES){
+        setStatus('文件大小错误：' + buf.byteLength, 'err');
+        return;
+      }
+      let listData = null;
+      try{
+        const r = await fetch('/bgs/list', {cache:'no-store'});
+        if (r.ok) listData = await r.json();
+      } catch(e){}
+      if (!listData){ setStatus('读取背景列表失败', 'err'); return; }
+
+      const storage = await askStorage('背景保存到哪？', listData.sd_active, listData);
+      if (!storage) return;
+
+      let nextIdx = 0;
+      (listData.slots || []).forEach(s => {
+        if (s.storage === storage && s.index >= nextIdx) nextIdx = s.index + 1;
+      });
+
+      const noteRaw = prompt('背景备注（可选）', '');
+      if (noteRaw === null) return;
+      const note = (noteRaw || '').slice(0, MAX_NOTE).trim();
+
+      setStatus('正在上传到 ' + storageLabel(storage) + ' 背景 ' + (nextIdx + 1) + '…', 'busy');
+      try{
+        let url = '/bgs/upload/' + nextIdx + '?storage=' + storage;
+        if (note) url += '&note=' + encodeURIComponent(note);
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type':'application/octet-stream'},
+          body: buf
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+
+        // ★ 生成并上传 thumb
+        try {
+          const thumbBuf = generateThumb(new Uint8Array(buf));
+          await fetch('/bgs/thumb_upload/' + nextIdx + '?storage=' + storage, {
+            method: 'POST',
+            headers: {'Content-Type':'application/octet-stream'},
+            body: thumbBuf
+          });
+        } catch(te){
+          console.warn('thumb upload fail', te);
+        }
+
+        await loadBgsList();
+        renderBgsGrid();
+        setStatus('已上传到 ' + storageLabel(storage) + ' 背景 ' + (nextIdx + 1), 'ok');
+      } catch(e){
+        setStatus('上传失败：' + e.message, 'err');
+      }
+    };
+    input.click();
+  });
+}
+
+async function init(){
+  buildColorPickers();
+  refreshColorActive();
+
+  const fonts = await loadFontsList();
+  if (!fonts.length){
+    setStatus('未检测到字模。请把字模放到 /www/fonts/ 或 /sd/e6/fonts/', 'err');
+    return;
+  }
+
+  fontGroups = buildFontGroups(fonts);
+  if (!fontGroups.length){
+    setStatus('字体列表为空', 'err');
+    return;
+  }
+  rebuildFontFamilySelect();
+
+  currentFontGroupIdx = 0;
+  currentSize = pickSize(fontGroups[0], 32);
+  rebuildSizeSelect();
+  $('fontFamilySelect').value = '0';
+
+  await loadBgsList();
+  renderBgsGrid();
+  updateBgHint();
+
+  renderChars();
+  updateStyleChecks();
+  refreshCharFontBox();
+  renderLineSettings();
+  bindEvents();
+  doRender();
+}
+
+init();
+
+})();
+</script>
+<script src="/nav.js"></script>
+</body>
+</html>

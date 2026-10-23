@@ -3,6 +3,7 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/ttf" />
     </content>
     <orderEntry type="jdk" jdkName="~\PycharmProjects\esp32c3supermini-ssd1677-426-bw\.venv" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

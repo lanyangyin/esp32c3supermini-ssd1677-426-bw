@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网格拼图 - E6</title>
+<style>
+  :root{
+    color-scheme:dark;
+    --ink:#f1f1ed; --muted:#a5a49d; --subtle:#7f7e77;
+    --line:#34332f; --line-strong:#4a4943;
+    --panel:#252420; --panel-deep:#1d1c19;
+    --paper:#2d2c27; --paper-raised:#35342f;
+    --accent:#c9cac5; --accent-strong:#f2f2ed;
+    --focus:#75c7bd; --danger:#f28b82;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;background:#151512;color:var(--ink);
+    font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;
+    padding-bottom:calc(60px + env(safe-area-inset-bottom,0px));
+  }
+  header{
+    padding:10px 14px;border-bottom:1px solid var(--line);background:#1b1a17;
+    display:flex;align-items:center;gap:8px;min-height:48px;
+    position:sticky;top:0;z-index:10;
+  }
+  header h1{margin:0;font-size:15px}
+  header .brand{display:inline-block;width:10px;height:14px;border:2px solid var(--accent-strong)}
+  main{max-width:960px;margin:0 auto;padding:12px;display:grid;gap:10px}
+  fieldset{
+    border:1px solid var(--line);border-radius:6px;margin:0;padding:10px;
+    background:var(--panel);
+  }
+  legend{
+    padding:0 6px;margin:0 0 0 -2px;font-size:11px;color:var(--subtle);
+    text-transform:uppercase;letter-spacing:.08em;font-weight:760;
+  }
+  label{display:grid;gap:3px;color:var(--muted);font-size:11px;font-weight:650}
+  select{width:100%;min-height:32px;padding:6px 8px;
+    border:1px solid var(--line);border-radius:4px;
+    background:var(--panel-deep);color:var(--ink);font:inherit;font-size:13px}
+  button{
+    padding:8px 12px;border:1px solid var(--line-strong);border-radius:4px;
+    background:var(--paper-raised);color:var(--ink);font:inherit;font-size:12px;
+    font-weight:700;cursor:pointer;
+  }
+  button.primary{background:var(--accent-strong);color:#1a1a1a;border-color:var(--accent-strong)}
+  button:hover:not(:disabled){border-color:var(--accent)}
+  .info{font-size:11px;color:var(--subtle);line-height:1.4;margin-top:6px}
+  .row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+  .row label{flex:1 1 100px;min-width:80px}
+  .btn-row{display:flex;gap:6px;flex-wrap:wrap}
+  .btn-row button{flex:1;min-width:120px}
+  .status{padding:8px 10px;border-radius:4px;font-size:12px;
+    background:#1a1a17;color:var(--muted);white-space:pre-wrap;margin-top:8px}
+  .status.ok{color:#7dda7d;background:#132013}
+  .status.err{color:var(--danger);background:#2a1414}
+  .status.busy{color:#7db8da;background:#132033}
+  .mosaic-wrap{
+    border:1px solid var(--line);border-radius:4px;background:#0a0a08;
+    padding:8px;display:grid;place-items:center;overflow:hidden;
+  }
+  #mosaicCanvas{
+    display:block;width:100%;max-width:720px;height:auto;
+    image-rendering:pixelated;cursor:pointer;
+    border:1px solid #2a2a25;border-radius:2px;
+  }
+  .modal-mask{
+    position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;
+    display:none;align-items:center;justify-content:center;padding:12px;
+  }
+  .modal-mask.show{display:flex}
+  .modal{
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    max-width:600px;width:100%;max-height:85vh;padding:14px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .modal h2{margin:0;font-size:14px}
+  .picker-list{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:6px;
+    overflow-y:auto;flex:1;padding-right:4px;
+  }
+  .picker-header{
+    grid-column:1/-1;
+    font-size:11px;color:var(--subtle);
+    text-transform:uppercase;letter-spacing:.08em;font-weight:760;
+    padding:8px 2px 2px;border-top:1px solid var(--line);margin-top:4px;
+  }
+  .picker-header:first-child{border-top:0;padding-top:0;margin-top:0}
+  .picker-item{
+    display:flex;gap:6px;padding:5px;border:1px solid var(--line);
+    border-radius:5px;background:var(--paper-raised);cursor:pointer;align-items:center;
+  }
+  .picker-item:hover{border-color:var(--focus)}
+  .picker-thumb{width:80px;height:53px;flex-shrink:0;border-radius:3px;background:#000;image-rendering:pixelated}
+  .picker-info{min-width:0;flex:1}
+  .picker-label{font-size:12px;color:var(--ink);font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .picker-note{font-size:10px;color:var(--muted);margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .modal-actions{display:flex;gap:6px}
+  .modal-actions button{flex:1}
+  .solid-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:6px}
+  .solid-cell{
+    height:40px;border-radius:6px;cursor:pointer;
+    border:1px solid rgba(0,0,0,.35);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;color:#fff;
+    text-shadow:0 0 3px #000,0 0 3px #000;
+    outline:2px solid transparent;outline-offset:-2px;
+  }
+  .solid-cell:hover{outline-color:var(--focus)}
+  .solid-cell.white-cell{color:#222;text-shadow:none}
+  .pseudo-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:6px}
+  .pseudo-cell{
+    position:relative;aspect-ratio:1.7;border-radius:6px;cursor:pointer;
+    border:1px solid rgba(0,0,0,.35);overflow:hidden;
+    outline:2px solid transparent;outline-offset:-2px;
+  }
+  .pseudo-cell:hover{outline-color:var(--focus)}
+  .pseudo-cell canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+  .pseudo-cell .name-label{
+    position:absolute;top:2px;left:4px;font-size:10px;color:#fff;font-weight:700;
+    text-shadow:0 0 2px #000,0 0 2px #000,0 0 2px #000;pointer-events:none;line-height:1;
+  }
+  .pseudo-cell .density-label{
+    position:absolute;bottom:0;right:0;background:rgba(0,0,0,.65);color:#fff;
+    font-size:9px;line-height:12px;padding:0 4px;font-weight:600;pointer-events:none;
+  }
+  .storage-tag{
+    display:inline-block;padding:0 5px;border-radius:8px;
+    font-size:9px;font-weight:700;line-height:14px;margin-left:4px;
+  }
+  .storage-tag.sd{background:#0a3b6a;color:#cfe8ff}
+  .storage-tag.flash{background:#3a3a35;color:#e8e8e8}
+
+  .storage-dialog{
+    position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1300;
+    display:none;align-items:center;justify-content:center;padding:12px;
+  }
+  .storage-dialog.show{display:flex}
+  .storage-dialog-inner{
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    max-width:360px;width:100%;padding:16px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .storage-dialog-inner h3{margin:0 0 6px;font-size:15px}
+  .storage-dialog-inner .storage-option{
+    padding:14px 12px;border:1px solid var(--line-strong);border-radius:6px;
+    background:var(--paper-raised);color:var(--ink);font-size:14px;font-weight:600;
+    cursor:pointer;text-align:left;
+  }
+  .storage-dialog-inner .storage-option:hover{border-color:var(--focus);background:color-mix(in srgb,var(--focus) 18%,var(--paper-raised))}
+  .storage-dialog-inner .storage-option.sd{background:#0a2f52;border-color:#1e4a75;color:#e0f0ff}
+  .storage-dialog-inner .storage-option.flash{background:#3a3a35;color:#e8e8e8}
+  .storage-dialog-inner .storage-option.cancel{background:transparent;border-color:var(--line);color:var(--muted);font-weight:500}
+  .storage-dialog-inner .storage-option small{display:block;font-size:11px;font-weight:400;opacity:.75;margin-top:2px}
+</style>
+</head>
+<body data-nav-layout="scroll">
+
+<header>
+  <h1><span class="brand"></span>网格拼图</h1>
+</header>
+
+<main>
+  <fieldset>
+    <legend>网格规格</legend>
+    <div class="row">
+      <label>列数（横切）
+        <select id="colsSelect">
+          <option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option>
+          <option value="5">5</option><option value="6">6</option>
+          <option value="7">7</option><option value="8">8</option>
+        </select>
+      </label>
+      <label>行数（竖切）
+        <select id="rowsSelect">
+          <option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option>
+          <option value="5">5</option><option value="6">6</option>
+          <option value="7">7</option><option value="8">8</option>
+        </select>
+      </label>
+      <div><button type="button" id="clearBtn">清空</button></div>
+    </div>
+    <div class="info" id="gridInfo">加载中…</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>拼图预览（点击格子选源）</legend>
+    <div class="mosaic-wrap">
+      <canvas id="mosaicCanvas" width="720" height="480"></canvas>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>输出</legend>
+    <div class="btn-row">
+      <button type="button" id="saveBgBtn">保存为背景</button>
+      <button type="button" id="displayBtn" class="primary">显示到屏幕</button>
+      <button type="button" id="downloadBtn">下载 BIN</button>
+    </div>
+    <div class="info">
+      每格可选：SD 背景 / Flash 背景 / SD BIN / Flash BIN / 基础色 / 伪色。
+      保存背景时会询问存到 SD 还是 Flash。
+    </div>
+  </fieldset>
+
+  <div id="status" class="status">就绪</div>
+</main>
+
+<div class="modal-mask" id="pickerModal">
+  <div class="modal">
+    <h2>选择格子内容</h2>
+    <div class="picker-list" id="pickerList"></div>
+    <div class="modal-actions">
+      <button type="button" id="pickerClear">清空此格</button>
+      <button type="button" id="pickerCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="storage-dialog" id="storageDialog">
+  <div class="storage-dialog-inner">
+    <h3 id="storageTitle">保存到哪？</h3>
+    <button type="button" class="storage-option sd" id="storageSdBtn">
+      SD 卡 <small id="storageSdInfo"></small>
+    </button>
+    <button type="button" class="storage-option flash" id="storageFlashBtn">
+      Flash <small id="storageFlashInfo"></small>
+    </button>
+    <button type="button" class="storage-option cancel" id="storageCancelBtn">取消</button>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+const W = 720, H = 480, FRAME_BYTES = 172800;
+const THUMB_W = 360, THUMB_H = 240;
+const THUMB_BYTES = (THUMB_W * THUMB_H) / 2;
+
+/* ★ 生成缩略图 */
+function generateThumb(bin){
+  var tw = THUMB_W, th = THUMB_H;
+  var thumb = new Uint8Array(tw * th / 2);
+  for (var ty = 0; ty < th; ty++){
+    var sy = ty * 2;
+    var srcBase = sy * 360;
+    var dstBase = ty * 180;
+    for (var tx = 0; tx < tw; tx++){
+      var sx = tx * 2;
+      var b = bin[srcBase + (sx >> 1)];
+      var nib = (b >> 4) & 0xF;
+      if (tx & 1) thumb[dstBase + (tx >> 1)] |= nib;
+      else        thumb[dstBase + (tx >> 1)]  = (nib << 4);
+    }
+  }
+  return thumb;
+}
+
+const INDEX_MAP = [0x0, 0x1, 0x2, 0x3, 0x5, 0x6];
+const IDX_REVERSE = {0x0:0, 0x1:1, 0x2:2, 0x3:3, 0x5:4, 0x6:5};
+const PALETTE_RGB = [
+  [0,0,0],[255,255,255],[255,255,0],
+  [255,0,0],[0,0,255],[0,255,0]
+];
+const PALETTE_NAME = ['黑','白','黄','红','蓝','绿'];
+const MAX_COLS = 8, MAX_ROWS = 8, MAX_CELLS = 64;
+
+const BAYER4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+const PSEUDO_COMBOS = [
+  [0,1,'灰'],[0,2,'暗黄'],[0,3,'暗红'],[0,4,'暗蓝'],[0,5,'暗绿'],
+  [1,2,'浅黄'],[1,3,'浅粉'],[1,4,'浅蓝'],[1,5,'浅绿'],
+  [2,3,'橙'],[2,4,'深绿'],[2,5,'黄绿'],
+  [3,4,'紫'],[3,5,'棕'],[4,5,'青']
+];
+const DENSITIES = [4, 8, 12];
+const DENSITY_LABELS = { 4:'25%', 8:'50%', 12:'75%' };
+
+const $ = id => document.getElementById(id);
+const statusEl = $('status');
+
+let gridCols = 2, gridRows = 3;
+let colX = [], rowY = [];
+let cells = [];
+let bgCache = {};
+let binLoading = {};
+let thumbCache = {};
+let currentPickCell = -1;
+
+function setStatus(msg, cls){
+  statusEl.textContent = msg;
+  statusEl.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+function calcBoundaries(total, n){
+  const arr = [];
+  for (let i = 0; i <= n; i++) arr.push(Math.round(i * total / n));
+  return arr;
+}
+
+function updateGridInfo(){
+  const total = gridCols * gridRows;
+  const cw = Math.round(W / gridCols);
+  const ch = Math.round(H / gridRows);
+  $('gridInfo').textContent =
+    '当前 ' + gridCols + '×' + gridRows + ' = ' + total + ' 格，每格约 ' +
+    cw + '×' + ch + ' 像素。上限 ' + MAX_COLS + '×' + MAX_ROWS + '。点格子选源。';
+}
+
+function parseSrc(src){
+  if (!src) return { kind: 'empty' };
+  if (src.startsWith('solid:')){
+    const idx = parseInt(src.slice(6));
+    if (idx >= 0 && idx <= 5) return { kind: 'solid', idx };
+    return { kind: 'empty' };
+  }
+  if (src.startsWith('pseudo:')){
+    const p = src.slice(7).split(',');
+    if (p.length !== 3) return { kind: 'empty' };
+    const a = parseInt(p[0]), b = parseInt(p[1]), d = parseInt(p[2]);
+    if (a < 0 || a > 5 || b < 0 || b > 5 || d <= 0) return { kind: 'empty' };
+    return { kind: 'pseudo', a, b, density: d };
+  }
+  const parts = src.split(':');
+  if (parts.length === 3){
+    return { kind: 'file', type: parts[0], storage: parts[1], idx: parseInt(parts[2]), src };
+  }
+  if (parts.length === 2){
+    return { kind: 'file', type: parts[0], storage: 'flash', idx: parseInt(parts[1]), src };
+  }
+  return { kind: 'empty' };
+}
+
+function resolveColorIdx(spec, x, y){
+  if (spec.kind === 'solid') return spec.idx;
+  if (spec.kind === 'pseudo'){
+    const t = BAYER4[y & 3][x & 3];
+    return t < spec.density ? spec.a : spec.b;
+  }
+  return 1;
+}
+
+async function loadSourceBin(spec){
+  if (bgCache[spec.src]) return bgCache[spec.src];
+  if (binLoading[spec.src]) return binLoading[spec.src];
+  const url = (spec.type === 'bgs' ? '/bgs/get/' : '/bins/get/') +
+              spec.idx + '?storage=' + spec.storage;
+
+  binLoading[spec.src] = (async () => {
+    try {
+      const r = await fetch(url, {cache:'no-store'});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const buf = new Uint8Array(await r.arrayBuffer());
+      if (buf.length !== FRAME_BYTES) throw new Error('大小异常 ' + buf.length);
+      bgCache[spec.src] = buf;
+      return buf;
+    } finally {
+      delete binLoading[spec.src];
+    }
+  })();
+  return binLoading[spec.src];
+}
+
+async function renderMosaic(){
+  const cvs = $('mosaicCanvas');
+  const ctx = cvs.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, W, H);
+
+  for (let r = 0; r < gridRows; r++){
+    for (let c = 0; c < gridCols; c++){
+      const idx = r * gridCols + c;
+      const cell = cells[idx];
+      const x0 = colX[c], y0 = rowY[r];
+      const x1 = colX[c + 1], y1 = rowY[r + 1];
+      const w = x1 - x0, h = y1 - y0;
+      if (w <= 0 || h <= 0) continue;
+
+      const spec = parseSrc(cell && cell.src);
+
+      if (spec.kind === 'empty'){
+        for (let yy = 0; yy < h; yy += 10){
+          for (let xx = 0; xx < w; xx += 10){
+            const parity = ((xx / 10) | 0) + ((yy / 10) | 0);
+            ctx.fillStyle = (parity & 1) ? '#d8d8d0' : '#ececE6';
+            ctx.fillRect(x0 + xx, y0 + yy,
+                         Math.min(10, w - xx), Math.min(10, h - yy));
+          }
+        }
+        if (w >= 24 && h >= 18){
+          ctx.fillStyle = 'rgba(0,0,0,0.55)';
+          ctx.font = 'bold ' + Math.min(w, h) / 3 + 'px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(idx + 1), x0 + w/2, y0 + h/2);
+        }
+        continue;
+      }
+
+      if (spec.kind === 'solid' || spec.kind === 'pseudo'){
+        const img = ctx.createImageData(w, h);
+        for (let yy = 0; yy < h; yy++){
+          const gy = y0 + yy;
+          for (let xx = 0; xx < w; xx++){
+            const gx = x0 + xx;
+            const ci = resolveColorIdx(spec, gx, gy);
+            const c0 = PALETTE_RGB[ci];
+            const o = (yy * w + xx) * 4;
+            img.data[o]   = c0[0];
+            img.data[o+1] = c0[1];
+            img.data[o+2] = c0[2];
+            img.data[o+3] = 255;
+          }
+        }
+        ctx.putImageData(img, x0, y0);
+        continue;
+      }
+
+      const bin = bgCache[spec.src];
+      if (!bin){
+        ctx.fillStyle = '#888';
+        ctx.fillRect(x0, y0, w, h);
+        continue;
+      }
+      const img = ctx.createImageData(w, h);
+      for (let yy = 0; yy < h; yy++){
+        const gy = y0 + yy;
+        const rowBase = gy * 360;
+        for (let xx = 0; xx < w; xx++){
+          const gx = x0 + xx;
+          const bIdx = rowBase + (gx >> 1);
+          const bVal = bin[bIdx];
+          const nib = (gx & 1) ? (bVal & 0xF) : ((bVal >> 4) & 0xF);
+          const pi = IDX_REVERSE[nib];
+          const c0 = PALETTE_RGB[pi !== undefined ? pi : 0];
+          const o = (yy * w + xx) * 4;
+          img.data[o]   = c0[0];
+          img.data[o+1] = c0[1];
+          img.data[o+2] = c0[2];
+          img.data[o+3] = 255;
+        }
+      }
+      ctx.putImageData(img, x0, y0);
+    }
+  }
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 1;
+  for (let c = 1; c < gridCols; c++){
+    ctx.beginPath(); ctx.moveTo(colX[c] + 0.5, 0); ctx.lineTo(colX[c] + 0.5, H); ctx.stroke();
+  }
+  for (let r = 1; r < gridRows; r++){
+    ctx.beginPath(); ctx.moveTo(0, rowY[r] + 0.5); ctx.lineTo(W, rowY[r] + 0.5); ctx.stroke();
+  }
+}
+
+function applyGridFromSelect(){
+  const newCols = Math.max(1, Math.min(MAX_COLS, parseInt($('colsSelect').value) || 1));
+  const newRows = Math.max(1, Math.min(MAX_ROWS, parseInt($('rowsSelect').value) || 1));
+  if (newCols * newRows > MAX_CELLS){
+    setStatus('超过最大格数限制 ' + MAX_CELLS, 'err');
+    $('colsSelect').value = gridCols;
+    $('rowsSelect').value = gridRows;
+    return;
+  }
+  gridCols = newCols; gridRows = newRows;
+  colX = calcBoundaries(W, gridCols);
+  rowY = calcBoundaries(H, gridRows);
+  while (cells.length < gridCols * gridRows) cells.push({ src: '' });
+  saveState(); renderMosaic(); updateGridInfo();
+}
+
+function makeThumbImageData(bin, w, h){
+  const img = new ImageData(w, h);
+  const sx = 720 / w, sy = 480 / h;
+  const d = img.data;
+  for (let yy = 0; yy < h; yy++){
+    const gy = Math.floor(yy * sy);
+    const rowBase = gy * 360;
+    for (let xx = 0; xx < w; xx++){
+      const gx = Math.floor(xx * sx);
+      const bIdx = rowBase + (gx >> 1);
+      const bVal = bin[bIdx];
+      const nib = (gx & 1) ? (bVal & 0xF) : ((bVal >> 4) & 0xF);
+      const pi = IDX_REVERSE[nib];
+      const c = PALETTE_RGB[pi !== undefined ? pi : 0];
+      const o = (yy * w + xx) * 4;
+      d[o] = c[0]; d[o+1] = c[1]; d[o+2] = c[2]; d[o+3] = 255;
+    }
+  }
+  return img;
+}
+
+async function getThumb(spec){
+  if (thumbCache[spec.src]) return thumbCache[spec.src];
+  const bin = await loadSourceBin(spec);
+  const img = makeThumbImageData(bin, 80, 53);
+  thumbCache[spec.src] = img;
+  return img;
+}
+
+function storageLabel(s){ return s === 'sd' ? 'SD' : 'Flash'; }
+function storageTagHtml(s){
+  return '<span class="storage-tag ' + s + '">' + storageLabel(s) + '</span>';
+}
+
+function makeFilePickerItem(spec, label, note){
+  const item = document.createElement('div');
+  item.className = 'picker-item';
+
+  const thumb = document.createElement('canvas');
+  thumb.className = 'picker-thumb';
+  thumb.width = 80; thumb.height = 53;
+  item.appendChild(thumb);
+
+  const info = document.createElement('div');
+  info.className = 'picker-info';
+  const lbl = document.createElement('div');
+  lbl.className = 'picker-label';
+  lbl.innerHTML = label + ' ' + storageTagHtml(spec.storage);
+  info.appendChild(lbl);
+  if (note){
+    const n = document.createElement('div');
+    n.className = 'picker-note';
+    n.textContent = note;
+    n.title = note;
+    info.appendChild(n);
+  }
+  item.appendChild(info);
+
+  (async () => {
+    try {
+      const imgData = await getThumb(spec);
+      thumb.getContext('2d').putImageData(imgData, 0, 0);
+    } catch(e) {}
+  })();
+
+  item.addEventListener('click', async () => {
+    $('pickerModal').classList.remove('show');
+    setStatus('加载源…', 'busy');
+    try {
+      await loadSourceBin(spec);
+      cells[currentPickCell] = { src: spec.src };
+      saveState();
+      await renderMosaic();
+      setStatus('格子 ' + (currentPickCell + 1) + ' 已设置', 'ok');
+    } catch(e){
+      setStatus('加载失败：' + e.message, 'err');
+    }
+  });
+  return item;
+}
+
+function makeSolidCell(idx){
+  const cell = document.createElement('div');
+  cell.className = 'solid-cell' + (idx === 1 ? ' white-cell' : '');
+  const c = PALETTE_RGB[idx];
+  cell.style.background = 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+  cell.textContent = PALETTE_NAME[idx];
+  cell.addEventListener('click', () => {
+    cells[currentPickCell] = { src: 'solid:' + idx };
+    saveState(); renderMosaic();
+    $('pickerModal').classList.remove('show');
+    setStatus('格子 ' + (currentPickCell + 1) + ' = ' + PALETTE_NAME[idx], 'ok');
+  });
+  return cell;
+}
+
+function makePseudoCell(a, b, density, groupLabel){
+  const cell = document.createElement('div');
+  cell.className = 'pseudo-cell';
+  const cvs = document.createElement('canvas');
+  cvs.width = 32; cvs.height = 20;
+  const ctx = cvs.getContext('2d');
+  for (let y = 0; y < 20; y++){
+    for (let x = 0; x < 32; x++){
+      const t = BAYER4[y & 3][x & 3];
+      const ci = t < density ? a : b;
+      const c = PALETTE_RGB[ci];
+      ctx.fillStyle = 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  cell.appendChild(cvs);
+  const nameEl = document.createElement('span');
+  nameEl.className = 'name-label';
+  nameEl.textContent = groupLabel;
+  cell.appendChild(nameEl);
+  const dLabel = DENSITY_LABELS[density] || (density + '/16');
+  const densityEl = document.createElement('span');
+  densityEl.className = 'density-label';
+  densityEl.textContent = dLabel;
+  cell.appendChild(densityEl);
+  cell.title = groupLabel + ' ' + dLabel;
+  cell.addEventListener('click', () => {
+    cells[currentPickCell] = { src: 'pseudo:' + a + ',' + b + ',' + density };
+    saveState(); renderMosaic();
+    $('pickerModal').classList.remove('show');
+    setStatus('格子 ' + (currentPickCell + 1) + ' = ' + groupLabel + ' ' + dLabel, 'ok');
+  });
+  return cell;
+}
+
+async function openPicker(cellIdx){
+  currentPickCell = cellIdx;
+  const list = $('pickerList');
+  list.innerHTML = '<div style="grid-column:1/-1;padding:14px;color:#888">加载中…</div>';
+
+  let binsData = null, bgsData = null;
+  try {
+    const [r1, r2] = await Promise.all([
+      fetch('/bins/list', {cache:'no-store'}),
+      fetch('/bgs/list', {cache:'no-store'}),
+    ]);
+    if (r1.ok) binsData = await r1.json();
+    if (r2.ok) bgsData = await r2.json();
+  } catch(e) {
+    list.innerHTML = '<div style="grid-column:1/-1;padding:14px;color:#f28b82">加载失败</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+
+  if (bgsData && bgsData.slots && bgsData.slots.length){
+    const hdr = document.createElement('div');
+    hdr.className = 'picker-header';
+    hdr.textContent = '背景（' + bgsData.slots.length + '）';
+    list.appendChild(hdr);
+    bgsData.slots.forEach(slot => {
+      const spec = {
+        kind: 'file', type: 'bgs', storage: slot.storage, idx: slot.index,
+        src: 'bgs:' + slot.storage + ':' + slot.index
+      };
+      list.appendChild(makeFilePickerItem(spec,
+        '背景 ' + (slot.index + 1), slot.note));
+    });
+  }
+
+  if (binsData && binsData.slots){
+    const filled = binsData.slots.filter(s => s.exists);
+    if (filled.length){
+      const hdr = document.createElement('div');
+      hdr.className = 'picker-header';
+      hdr.textContent = 'BIN（' + filled.length + '）';
+      list.appendChild(hdr);
+      filled.forEach(slot => {
+        const spec = {
+          kind: 'file', type: 'bins', storage: slot.storage, idx: slot.index,
+          src: 'bins:' + slot.storage + ':' + slot.index
+        };
+        list.appendChild(makeFilePickerItem(spec,
+          'BIN ' + (slot.index + 1), slot.note));
+      });
+    }
+  }
+
+  const solidHdr = document.createElement('div');
+  solidHdr.className = 'picker-header';
+  solidHdr.textContent = '基础色（6）';
+  list.appendChild(solidHdr);
+  const solidGrid = document.createElement('div');
+  solidGrid.className = 'solid-grid';
+  for (let i = 0; i < 6; i++) solidGrid.appendChild(makeSolidCell(i));
+  list.appendChild(solidGrid);
+
+  const pseudoHdr = document.createElement('div');
+  pseudoHdr.className = 'picker-header';
+  pseudoHdr.textContent = '伪色（15 组 × 3 密度 = 45）';
+  list.appendChild(pseudoHdr);
+  const pseudoGrid = document.createElement('div');
+  pseudoGrid.className = 'pseudo-grid';
+  PSEUDO_COMBOS.forEach(([a, b, label]) => {
+    DENSITIES.forEach(d => pseudoGrid.appendChild(makePseudoCell(a, b, d, label)));
+  });
+  list.appendChild(pseudoGrid);
+
+  $('pickerModal').classList.add('show');
+}
+
+function composeMosaic(){
+  const outIdx = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) outIdx[i] = 1;
+
+  for (let r = 0; r < gridRows; r++){
+    for (let c = 0; c < gridCols; c++){
+      const idx = r * gridCols + c;
+      const cell = cells[idx];
+      const spec = parseSrc(cell && cell.src);
+      if (spec.kind === 'empty') continue;
+      const x0 = colX[c], y0 = rowY[r];
+      const x1 = colX[c + 1], y1 = rowY[r + 1];
+
+      if (spec.kind === 'solid' || spec.kind === 'pseudo'){
+        for (let yy = y0; yy < y1; yy++){
+          for (let xx = x0; xx < x1; xx++){
+            outIdx[yy * W + xx] = resolveColorIdx(spec, xx, yy);
+          }
+        }
+        continue;
+      }
+
+      const bin = bgCache[spec.src];
+      if (!bin) continue;
+      for (let yy = y0; yy < y1; yy++){
+        const rowBase = yy * 360;
+        for (let xx = x0; xx < x1; xx++){
+          const bIdx = rowBase + (xx >> 1);
+          const bVal = bin[bIdx];
+          const nib = (xx & 1) ? (bVal & 0xF) : ((bVal >> 4) & 0xF);
+          const pi = IDX_REVERSE[nib];
+          outIdx[yy * W + xx] = (pi !== undefined) ? pi : 1;
+        }
+      }
+    }
+  }
+
+  const out = new Uint8Array(FRAME_BYTES);
+  for (let i = 0; i < W * H; i += 2){
+    const hi = INDEX_MAP[outIdx[i]];
+    const lo = INDEX_MAP[outIdx[i + 1]];
+    out[i >> 1] = (hi << 4) | lo;
+  }
+  return out;
+}
+
+function askStorage(title, sdActive, info){
+  return new Promise(resolve => {
+    const dlg = $('storageDialog');
+    $('storageTitle').textContent = title;
+    $('storageSdBtn').style.display = sdActive ? '' : 'none';
+    $('storageSdInfo').textContent = sdActive && info && info.free_sd != null
+      ? '（剩余 ' + (info.free_sd/1024).toFixed(0) + ' KB）' : '';
+    $('storageFlashInfo').textContent = info && info.free_flash != null
+      ? '（剩余 ' + (info.free_flash/1024).toFixed(0) + ' KB）' : '';
+    dlg.classList.add('show');
+
+    const done = v => {
+      dlg.classList.remove('show');
+      $('storageSdBtn').onclick = $('storageFlashBtn').onclick =
+      $('storageCancelBtn').onclick = null;
+      resolve(v);
+    };
+    $('storageSdBtn').onclick = () => done('sd');
+    $('storageFlashBtn').onclick = () => done('flash');
+    $('storageCancelBtn').onclick = () => done(null);
+  });
+}
+
+async function saveBg(){
+  const bin = composeMosaic();
+  let listData = null;
+  try {
+    const r = await fetch('/bgs/list', {cache:'no-store'});
+    if (r.ok) listData = await r.json();
+  } catch(e) {}
+
+  if (!listData){
+    setStatus('读取背景列表失败', 'err');
+    return;
+  }
+
+  const storage = await askStorage('保存拼图为背景到哪？',
+    listData.sd_active, listData);
+  if (!storage) return;
+
+  let nextIdx = 0;
+  (listData.slots || []).forEach(s => {
+    if (s.storage === storage && s.index >= nextIdx) nextIdx = s.index + 1;
+  });
+
+  const noteRaw = prompt('背景备注（可选）', '拼图 ' + gridCols + '×' + gridRows);
+  if (noteRaw === null) return;
+  const note = (noteRaw || '').slice(0, 200).trim();
+
+  let url = '/bgs/upload/' + nextIdx + '?storage=' + storage;
+  if (note) url += '&note=' + encodeURIComponent(note);
+
+  setStatus('正在保存到 ' + storageLabel(storage) + ' 背景 ' + (nextIdx + 1) + '…', 'busy');
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type':'application/octet-stream'},
+      body: bin
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+
+    // ★ 生成并上传 thumb
+    try {
+      const thumbBuf = generateThumb(bin);
+      await fetch('/bgs/thumb_upload/' + nextIdx + '?storage=' + storage, {
+        method: 'POST',
+        headers: {'Content-Type':'application/octet-stream'},
+        body: thumbBuf
+      });
+    } catch(te) {
+      console.warn('thumb upload fail', te);
+    }
+
+    setStatus('已保存到 ' + storageLabel(storage) + ' 背景 ' + (nextIdx + 1), 'ok');
+  } catch(e){
+    setStatus('保存失败：' + e.message, 'err');
+  }
+}
+
+async function displayToScreen(){
+  const bin = composeMosaic();
+  setStatus('上传到屏幕，约 30~60 秒…', 'busy');
+  try {
+    const r = await fetch('/upload', {
+      method: 'POST',
+      headers: {'Content-Type':'application/octet-stream'},
+      body: bin
+    });
+    const t = await r.text();
+    if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + t);
+    setStatus('已显示到屏幕（' + t + ' 字节）', 'ok');
+  } catch(e){
+    setStatus('失败：' + e.message, 'err');
+  }
+}
+
+function download(){
+  const bin = composeMosaic();
+  const blob = new Blob([bin], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'mosaic_' + Date.now() + '.bin';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  setStatus('已下载 ' + bin.length + ' 字节', 'ok');
+}
+
+function saveState(){
+  try {
+    localStorage.setItem('e6-mosaic-v3', JSON.stringify({
+      cols: gridCols, rows: gridRows, cells: cells
+    }));
+  } catch(e) {}
+}
+
+function loadState(){
+  try {
+    let raw = localStorage.getItem('e6-mosaic-v3');
+    if (!raw) raw = localStorage.getItem('e6-mosaic-v2');
+    const s = JSON.parse(raw);
+    if (s && s.cols && s.rows && Array.isArray(s.cells)){
+      const c = parseInt(s.cols), r = parseInt(s.rows);
+      if (c >= 1 && c <= MAX_COLS && r >= 1 && r <= MAX_ROWS && c * r <= MAX_CELLS){
+        gridCols = c; gridRows = r;
+        colX = calcBoundaries(W, gridCols);
+        rowY = calcBoundaries(H, gridRows);
+        cells = s.cells.slice();
+        while (cells.length < gridCols * gridRows) cells.push({ src: '' });
+        $('colsSelect').value = String(gridCols);
+        $('rowsSelect').value = String(gridRows);
+        return true;
+      }
+    }
+  } catch(e) {}
+  return false;
+}
+
+$('colsSelect').addEventListener('change', applyGridFromSelect);
+$('rowsSelect').addEventListener('change', applyGridFromSelect);
+
+$('clearBtn').addEventListener('click', () => {
+  if (!confirm('清空所有格子？')) return;
+  cells = cells.map(() => ({ src: '' }));
+  saveState(); renderMosaic();
+  setStatus('已清空', 'ok');
+});
+
+$('saveBgBtn').addEventListener('click', saveBg);
+$('displayBtn').addEventListener('click', displayToScreen);
+$('downloadBtn').addEventListener('click', download);
+$('pickerCancel').addEventListener('click', () => $('pickerModal').classList.remove('show'));
+$('pickerClear').addEventListener('click', () => {
+  if (currentPickCell < 0) return;
+  cells[currentPickCell] = { src: '' };
+  saveState(); renderMosaic();
+  $('pickerModal').classList.remove('show');
+  setStatus('已清空格子 ' + (currentPickCell + 1));
+});
+
+$('mosaicCanvas').addEventListener('click', (e) => {
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width * W;
+  const y = (e.clientY - rect.top) / rect.height * H;
+  let col = 0, row = 0;
+  for (let c = 0; c < gridCols; c++){
+    if (x >= colX[c] && x < colX[c + 1]) { col = c; break; }
+  }
+  for (let r = 0; r < gridRows; r++){
+    if (y >= rowY[r] && y < rowY[r + 1]) { row = r; break; }
+  }
+  openPicker(row * gridCols + col);
+});
+
+function init(){
+  if (!loadState()){
+    gridCols = 2; gridRows = 3;
+    colX = calcBoundaries(W, gridCols);
+    rowY = calcBoundaries(H, gridRows);
+    cells = [];
+    for (let i = 0; i < gridCols * gridRows; i++) cells.push({ src: '' });
+    $('colsSelect').value = '2';
+    $('rowsSelect').value = '3';
+  }
+  updateGridInfo();
+  renderMosaic();
+  setStatus('就绪：点画布上的格子选择源', '');
+}
+
+init();
+
+})();
+</script>
+<script src="/nav.js"></script>
+</body>
+</html>
