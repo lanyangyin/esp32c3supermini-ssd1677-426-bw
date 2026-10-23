@@ -1,0 +1,20 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <option name="scopesOrder">
+      <list>
+        <option value="Project Files" />
+        <option value="Open Files" />
+        <option value="All Changed Files" />
+        <option value="Scratches and Consoles" />
+      </list>
+    </option>
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="camera" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

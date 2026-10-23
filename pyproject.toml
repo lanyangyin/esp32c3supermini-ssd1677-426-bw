@@ -1,0 +1,5 @@
+[project]
+name = "esp32c3supermini-ssd1677-426-bw"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
