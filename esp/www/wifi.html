@@ -79,6 +79,15 @@ button.btn.gray{background:#888}
   font-size:12px;font-weight:600;cursor:pointer;
 }
 .saved-item .delete:hover{background:#fdeaea}
+.saved-item .connect{
+  padding:4px 10px;border-radius:6px;
+  background:#e6f0ff;color:var(--accent);
+  border:1px solid #b8d8ff;
+  font-size:12px;font-weight:600;cursor:pointer;
+}
+.saved-item .connect:hover{background:#cce0ff}
+.saved-item .actions{display:flex;gap:4px;flex-shrink:0}
+.saved-item .delete:hover{background:#fdeaea}
 .form-row{display:grid;gap:8px;margin-bottom:10px}
 .form-row label{
   display:grid;gap:4px;color:var(--muted);
@@ -220,17 +229,30 @@ async function loadSaved(){
     nets.forEach(function(n){
       var item = document.createElement('div');
       item.className = 'saved-item';
+
       var info = document.createElement('div');
       info.className = 'info';
       info.innerHTML =
         '<div class="ssid">' + escapeHtml(n.ssid) + '</div>' +
         '<div class="meta">优先级 ' + (n.priority || 1) + '</div>';
-      var btn = document.createElement('button');
-      btn.className = 'delete';
-      btn.textContent = '删除';
-      btn.addEventListener('click', function(){ deleteNetwork(n.ssid); });
       item.appendChild(info);
-      item.appendChild(btn);
+
+      var actions = document.createElement('div');
+      actions.className = 'actions';
+
+      var conn = document.createElement('button');
+      conn.className = 'connect';
+      conn.textContent = '连接';
+      conn.addEventListener('click', function(){ connectNetwork(n.ssid); });
+      actions.appendChild(conn);
+
+      var del = document.createElement('button');
+      del.className = 'delete';
+      del.textContent = '删除';
+      del.addEventListener('click', function(){ deleteNetwork(n.ssid); });
+      actions.appendChild(del);
+
+      item.appendChild(actions);
       list.appendChild(item);
     });
   }catch(e){
@@ -292,12 +314,33 @@ async function saveNetwork(){
       body: JSON.stringify({ssid: ssid, password: pwd, priority: prio})
     });
     if(!r.ok) throw new Error('HTTP ' + r.status);
-    setStatus('已保存，下次重启自动连接', 'ok');
+    setStatus('已保存。点击「连接」立即生效，或下次重启自动连接', 'ok');
     $('ssidInput').value = '';
     $('pwdInput').value = '';
     await loadSaved();
   }catch(e){
     setStatus('保存失败: ' + e.message, 'err');
+  }
+}
+
+async function connectNetwork(ssid){
+  if(!confirm('连接到 ' + ssid + '？\n连接期间 AP 可能短暂不稳，约 15 秒')) return;
+  setStatus('正在连接 ' + ssid + '…（约 15 秒）', 'busy');
+  try{
+    var r = await fetch('/wifi/connect', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ssid: ssid})
+    });
+    var d = await r.json();
+    if(d.connected){
+      setStatus('已连接 ' + ssid + '  ' + (d.ip || ''), 'ok');
+    }else{
+      setStatus('连接失败，请检查密码或信号', 'err');
+    }
+    await refreshStatus();
+  }catch(e){
+    setStatus('连接请求失败: ' + e.message + '（AP 可能暂时不可用，稍后刷新）', 'err');
   }
 }
 

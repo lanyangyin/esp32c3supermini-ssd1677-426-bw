@@ -10,17 +10,15 @@ W, H = 800, 480
 FONT_SIZE = 8
 SCALE = 3
 CHAR_W = FONT_SIZE * SCALE       # 24
-LINE_H = CHAR_W + 6              # 24 + 6 行间距 = 30
+LINE_H = CHAR_W + 6              # 30
 
 MARGIN_X = 20
 MARGIN_TOP = 50
 MARGIN_BOTTOM = 50
 
-# 每行字符数、每页行数
-COLS = (W - MARGIN_X * 2) // CHAR_W          # (800-40)/24 = 31
-ROWS = (H - MARGIN_TOP - MARGIN_BOTTOM) // LINE_H  # (480-100)/30 = 12
+COLS = (W - MARGIN_X * 2) // CHAR_W
+ROWS = (H - MARGIN_TOP - MARGIN_BOTTOM) // LINE_H
 
-# 每 10 页全刷一次
 FULL_REFRESH_EVERY = 10
 
 BOOKS_DIR = '/books'
@@ -54,22 +52,13 @@ class Book:
             return True
         return False
 
-    def goto(self, idx):
-        if 0 <= idx < len(self.pages):
-            self.page_idx = idx
-            return True
-        return False
-
     def progress(self):
         if not self.pages:
             return 0.0
         return (self.page_idx + 1) / len(self.pages)
 
 
-# ---------- 分页 ----------
-
 def _wrap(text, cols):
-    """按字符数折行（等宽字体下等价于按像素宽度）"""
     lines = []
     for raw in text.split('\n'):
         raw = raw.replace('\r', '').rstrip()
@@ -77,7 +66,6 @@ def _wrap(text, cols):
             lines.append('')
             continue
         while len(raw) > cols:
-            # 尝试在空格处断行（英文友好）
             cut = raw.rfind(' ', 0, cols)
             if cut < cols // 2:
                 cut = cols
@@ -90,8 +78,6 @@ def _wrap(text, cols):
 def _paginate(lines, rows):
     return [lines[i:i + rows] for i in range(0, len(lines), rows)]
 
-
-# ---------- 书籍管理 ----------
 
 def ensure_dir():
     try:
@@ -121,20 +107,24 @@ def load_book(filename):
     return Book(title, text, filename)
 
 
-def save_book(filename, text):
-    ensure_dir()
+def _safe_filename(filename):
+    """MicroPython 没有 str.isalnum()，用码点白名单"""
     if not filename.endswith('.txt'):
         filename += '.txt'
-    # MicroPython 没有 str.isalnum()，用码点白名单代替
-    safe_chars = []
+    out = []
     for c in filename:
         o = ord(c)
         if (0x30 <= o <= 0x39) or (0x41 <= o <= 0x5A) or (0x61 <= o <= 0x7A) \
-                or o in (0x2E, 0x5F, 0x2D):  # 0-9 A-Z a-z . _ -
-            safe_chars.append(c)
+                or o == 0x2E or o == 0x5F or o == 0x2D:
+            out.append(c)
         else:
-            safe_chars.append('_')
-    safe = ''.join(safe_chars)
+            out.append('_')
+    return ''.join(out)
+
+
+def save_book(filename, text):
+    ensure_dir()
+    safe = _safe_filename(filename)
     path = BOOKS_DIR + '/' + safe
     with open(path, 'w') as f:
         f.write(text)
@@ -158,7 +148,6 @@ def get_book():
 
 
 def render(full=False):
-    """把当前页画到屏幕。full=True 强制全刷，否则局刷"""
     global _pages_since_full
     if _current_book is None:
         return
@@ -179,7 +168,7 @@ def render(full=False):
             epd.text(line, MARGIN_X, y, 1, SCALE)
         y += LINE_H
 
-    # 页脚：页码 + 进度条
+    # 页脚
     info = '%d / %d' % (_current_book.page_idx + 1, _current_book.page_count())
     epd.text(info, MARGIN_X, H - 36, 1, 2)
 
@@ -189,7 +178,6 @@ def render(full=False):
     p = _current_book.progress()
     epd.fill_rect(MARGIN_X, bar_y, int(bar_w * p), 6, 1)
 
-    # 决定全刷还是局刷
     need_full = full or _pages_since_full >= FULL_REFRESH_EVERY
     t0 = time.ticks_ms()
     if need_full:
