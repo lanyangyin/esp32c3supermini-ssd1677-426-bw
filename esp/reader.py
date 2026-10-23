@@ -27,8 +27,9 @@ BOOKS_DIR = '/books'
 
 
 class Book:
-    def __init__(self, title, text):
+    def __init__(self, title, text, filename=None):
         self.title = title
+        self.filename = filename or (title + '.txt')
         self.lines = _wrap(text, COLS)
         self.pages = _paginate(self.lines, ROWS)
         self.page_idx = 0
@@ -117,15 +118,23 @@ def load_book(filename):
         print('读取失败:', e)
         return None
     title = filename[:-4] if filename.endswith('.txt') else filename
-    return Book(title, text)
+    return Book(title, text, filename)
 
 
 def save_book(filename, text):
     ensure_dir()
     if not filename.endswith('.txt'):
         filename += '.txt'
-    # 文件名安全化
-    safe = ''.join(c if c.isalnum() or c in '._-' else '_' for c in filename)
+    # MicroPython 没有 str.isalnum()，用码点白名单代替
+    safe_chars = []
+    for c in filename:
+        o = ord(c)
+        if (0x30 <= o <= 0x39) or (0x41 <= o <= 0x5A) or (0x61 <= o <= 0x7A) \
+                or o in (0x2E, 0x5F, 0x2D):  # 0-9 A-Z a-z . _ -
+            safe_chars.append(c)
+        else:
+            safe_chars.append('_')
+    safe = ''.join(safe_chars)
     path = BOOKS_DIR + '/' + safe
     with open(path, 'w') as f:
         f.write(text)

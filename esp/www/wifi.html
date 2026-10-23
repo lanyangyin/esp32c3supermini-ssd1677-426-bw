@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网络设置 - EInkReader</title>
+<style>
+:root{
+  --bg:#f5f5f5;--card:#fff;--ink:#222;--muted:#888;
+  --line:#e4e4e4;--accent:#06c;--ok:#0a7a0a;--err:#c00;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,system-ui,"Segoe UI",sans-serif;
+  font-size:15px;line-height:1.5;padding-bottom:20px;
+}
+header{
+  position:sticky;top:0;z-index:10;
+  background:rgba(255,255,255,.94);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);
+  padding:10px 14px;
+  display:flex;align-items:center;gap:10px;min-height:52px;
+}
+header h1{margin:0;font-size:16px;font-weight:600;flex:1}
+header nav{display:flex;gap:6px}
+header nav a{
+  padding:6px 12px;border-radius:8px;text-decoration:none;
+  color:var(--muted);font-size:13px;font-weight:600;
+  border:1px solid var(--line);background:#fff;
+}
+header nav a.active{color:var(--accent);border-color:var(--accent);background:#e6f0ff}
+main{max-width:640px;margin:0 auto;padding:14px}
+.card{
+  background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:14px;margin-bottom:12px;
+  box-shadow:0 1px 3px rgba(0,0,0,.04);
+}
+.card h2{
+  margin:0 0 10px;font-size:14px;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.05em;
+}
+.net-status{display:grid;gap:8px}
+.net-row{
+  display:flex;justify-content:space-between;gap:12px;
+  padding:8px 0;border-bottom:1px solid var(--line);
+  font-size:13px;
+}
+.net-row:last-child{border-bottom:none}
+.net-row .label{color:var(--muted);font-weight:500}
+.net-row .val{
+  color:var(--ink);font-weight:600;
+  text-align:right;word-break:break-all;
+}
+.net-row .val.ok{color:var(--ok)}
+.net-row .val.err{color:var(--err)}
+button.btn{
+  padding:10px 16px;border-radius:8px;border:none;
+  background:var(--accent);color:#fff;
+  font-size:14px;font-weight:600;cursor:pointer;width:100%;
+}
+button.btn:disabled{opacity:.4;cursor:not-allowed}
+button.btn.gray{background:#888}
+.saved-list,.scan-list{display:flex;flex-direction:column;gap:6px}
+.saved-item,.scan-item{
+  padding:10px 12px;border-radius:8px;
+  border:1px solid var(--line);background:#fafafa;
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+}
+.scan-item{cursor:pointer}
+.scan-item:hover{border-color:var(--accent);background:#f0f6ff}
+.saved-item .info,.scan-item .info{flex:1;font-size:13px}
+.saved-item .ssid,.scan-item .ssid{font-weight:600;margin-bottom:2px}
+.saved-item .meta,.scan-item .meta{color:var(--muted);font-size:11px}
+.saved-item .delete{
+  padding:4px 10px;border-radius:6px;
+  background:#fff;color:#c00;border:1px solid #f0c0c0;
+  font-size:12px;font-weight:600;cursor:pointer;
+}
+.saved-item .delete:hover{background:#fdeaea}
+.form-row{display:grid;gap:8px;margin-bottom:10px}
+.form-row label{
+  display:grid;gap:4px;color:var(--muted);
+  font-size:12px;font-weight:600;
+}
+.form-row input{
+  padding:10px 12px;border:1px solid var(--line);
+  border-radius:8px;background:#fafafa;
+  color:var(--ink);font-size:14px;font-family:inherit;
+}
+.form-row input:focus{outline:none;border-color:var(--accent);background:#fff}
+.empty{color:var(--muted);font-size:13px;text-align:center;padding:16px}
+.status{
+  padding:10px 12px;border-radius:10px;font-size:13px;
+  background:#f0f0f0;color:#444;margin-top:12px;display:none;
+}
+.status.show{display:block}
+.status.busy{background:#e8f1fa;color:#0a5bc8}
+.status.ok{background:#e8f6e8;color:#0a7a0a}
+.status.err{background:#fdeaea;color:#c00}
+</style>
+</head>
+<body>
+<header>
+  <h1>网络设置</h1>
+  <nav id="nav"></nav>
+</header>
+<main>
+  <div class="card">
+    <h2>当前网络</h2>
+    <div class="net-status">
+      <div class="net-row">
+        <span class="label">AP 热点</span>
+        <span class="val" id="apInfo">检测中…</span>
+      </div>
+      <div class="net-row">
+        <span class="label">STA 上游</span>
+        <span class="val" id="staInfo">检测中…</span>
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <button class="btn gray" id="refreshStatusBtn">刷新状态</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>已保存的网络（按优先级）</h2>
+    <div class="saved-list" id="savedList">
+      <div class="empty">加载中…</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>扫描并添加</h2>
+    <button class="btn" id="scanBtn">扫描 WiFi</button>
+    <div class="scan-list" id="scanList" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>手动添加</h2>
+    <div class="form-row">
+      <label>SSID
+        <input type="text" id="ssidInput" placeholder="WiFi 名称">
+      </label>
+      <label>密码
+        <input type="text" id="pwdInput" placeholder="密码（留空=开放）">
+      </label>
+      <label>优先级（1 最高）
+        <input type="number" id="priorityInput" value="1" min="1" max="99">
+      </label>
+    </div>
+    <button class="btn" id="saveNetworkBtn">保存网络</button>
+  </div>
+
+  <div class="status" id="status"></div>
+</main>
+
+<script>
+(function(){
+'use strict';
+
+var $ = function(id){ return document.getElementById(id); };
+
+function setStatus(msg, cls){
+  var el = $('status');
+  if(!msg){ el.className = 'status'; el.textContent = ''; return; }
+  el.className = 'status show' + (cls ? ' ' + cls : '');
+  el.textContent = msg;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+async function refreshStatus(){
+  var apEl = $('apInfo');
+  var staEl = $('staInfo');
+  try{
+    var r = await fetch('/status', {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    var info = await r.json();
+
+    if(info.ap && info.ap.active){
+      apEl.innerHTML = escapeHtml(info.ap.ssid || '—') + '<br>' + escapeHtml(info.ap.ip || '');
+      apEl.className = 'val ok';
+    }else{
+      apEl.textContent = '未开启';
+      apEl.className = 'val err';
+    }
+
+    if(info.sta && info.sta.connected){
+      var rssi = info.sta.rssi != null ? ' · ' + info.sta.rssi + ' dBm' : '';
+      staEl.innerHTML = escapeHtml(info.sta.ssid || 'WiFi') + rssi + '<br>' + escapeHtml(info.sta.ip || '');
+      staEl.className = 'val ok';
+    }else{
+      staEl.textContent = '未连接';
+      staEl.className = 'val err';
+    }
+  }catch(e){
+    apEl.textContent = '读取失败';
+    staEl.textContent = '读取失败';
+    apEl.className = 'val err';
+    staEl.className = 'val err';
+  }
+}
+
+async function loadSaved(){
+  try{
+    var r = await fetch('/wifi/list', {cache:'no-store'});
+    var nets = await r.json();
+    var list = $('savedList');
+    if(!nets || !nets.length){
+      list.innerHTML = '<div class="empty">暂无保存的网络</div>';
+      return;
+    }
+    list.innerHTML = '';
+    nets.forEach(function(n){
+      var item = document.createElement('div');
+      item.className = 'saved-item';
+      var info = document.createElement('div');
+      info.className = 'info';
+      info.innerHTML =
+        '<div class="ssid">' + escapeHtml(n.ssid) + '</div>' +
+        '<div class="meta">优先级 ' + (n.priority || 1) + '</div>';
+      var btn = document.createElement('button');
+      btn.className = 'delete';
+      btn.textContent = '删除';
+      btn.addEventListener('click', function(){ deleteNetwork(n.ssid); });
+      item.appendChild(info);
+      item.appendChild(btn);
+      list.appendChild(item);
+    });
+  }catch(e){
+    $('savedList').innerHTML = '<div class="empty">读取失败: ' + e.message + '</div>';
+  }
+}
+
+async function scan(){
+  var btn = $('scanBtn');
+  btn.disabled = true;
+  btn.textContent = '扫描中…';
+  setStatus('正在扫描（3~5 秒）…', 'busy');
+  try{
+    var r = await fetch('/wifi/scan', {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    var nets = await r.json();
+    var list = $('scanList');
+    if(!nets.length){
+      list.innerHTML = '<div class="empty">未发现网络</div>';
+      setStatus('未发现网络', 'err');
+      return;
+    }
+    list.innerHTML = '';
+    nets.forEach(function(n){
+      var item = document.createElement('div');
+      item.className = 'scan-item';
+      var info = document.createElement('div');
+      info.className = 'info';
+      info.innerHTML =
+        '<div class="ssid">' + escapeHtml(n.ssid) + '</div>' +
+        '<div class="meta">' + n.rssi + ' dBm</div>';
+      item.appendChild(info);
+      item.addEventListener('click', function(){
+        $('ssidInput').value = n.ssid;
+        $('pwdInput').focus();
+        setStatus('已选择 ' + n.ssid + '，输入密码后保存', 'ok');
+      });
+      list.appendChild(item);
+    });
+    setStatus('扫描完成，找到 ' + nets.length + ' 个网络', 'ok');
+  }catch(e){
+    setStatus('扫描失败: ' + e.message, 'err');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = '扫描 WiFi';
+  }
+}
+
+async function saveNetwork(){
+  var ssid = $('ssidInput').value.trim();
+  var pwd = $('pwdInput').value;
+  var prio = parseInt($('priorityInput').value) || 1;
+  if(!ssid){ setStatus('请输入 SSID', 'err'); return; }
+  setStatus('保存中…', 'busy');
+  try{
+    var r = await fetch('/wifi/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ssid: ssid, password: pwd, priority: prio})
+    });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    setStatus('已保存，下次重启自动连接', 'ok');
+    $('ssidInput').value = '';
+    $('pwdInput').value = '';
+    await loadSaved();
+  }catch(e){
+    setStatus('保存失败: ' + e.message, 'err');
+  }
+}
+
+async function deleteNetwork(ssid){
+  if(!confirm('删除 ' + ssid + '？')) return;
+  try{
+    var r = await fetch('/wifi/delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ssid: ssid})
+    });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    setStatus('已删除', 'ok');
+    await loadSaved();
+  }catch(e){
+    setStatus('删除失败: ' + e.message, 'err');
+  }
+}
+
+// ---------- 绑定 ----------
+
+$('refreshStatusBtn').addEventListener('click', refreshStatus);
+$('scanBtn').addEventListener('click', scan);
+$('saveNetworkBtn').addEventListener('click', saveNetwork);
+
+refreshStatus();
+loadSaved();
+setInterval(refreshStatus, 15000);
+})();
+</script>
+<script src="/nav.js"></script>
+</body>
+</html>
