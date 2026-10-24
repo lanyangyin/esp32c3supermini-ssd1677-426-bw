@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>E6 黑白图片转换 (800x480)</title>
+<title>E6 图片转换工具</title>
 <style>
   :root{
     color-scheme:dark;
@@ -23,7 +23,12 @@
   .host-info{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
   .host-info.ok{color:#7dda7d}
   .host-info.err{color:var(--danger)}
-  main{display:grid;grid-template-columns:minmax(320px,400px) minmax(0,1fr);height:calc(100vh - 48px);overflow:hidden}
+  main{
+    display:grid;
+    grid-template-columns:minmax(320px,400px) minmax(0,1fr);
+    height:calc(100vh - 48px - 60px - env(safe-area-inset-bottom, 0px));
+    overflow:hidden;
+  }
   aside{border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:0}
   .workspace{overflow:auto;padding:12px;display:grid;grid-template-rows:auto 1fr;gap:10px}
   fieldset{border:0;border-bottom:1px solid var(--line);margin:0;padding:12px 14px;display:grid;gap:10px}
@@ -35,6 +40,7 @@
   select,input[type=file],input[type=text],input[type=number]{width:100%;min-height:32px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--panel-deep);color:var(--ink);font:inherit;font-size:13px}
   input[type=file]::file-selector-button{padding:0 10px;margin-right:8px;border:0;border-radius:3px;background:var(--paper-raised);color:var(--ink);cursor:pointer}
   input[type=range]{width:100%;accent-color:var(--accent);height:20px;background:transparent}
+  input[type=range]:disabled{opacity:.35;cursor:not-allowed}
   button{padding:9px 12px;border:1px solid var(--line-strong);border-radius:4px;background:var(--paper-raised);color:var(--ink);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
   button:hover:not(:disabled){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,var(--paper-raised))}
   button:disabled{opacity:.5;cursor:not-allowed}
@@ -46,6 +52,7 @@
   .slider-row output{text-align:right;font-size:11px;color:var(--ink);font-variant-numeric:tabular-nums}
   .slider-row.is-disabled{opacity:.45}
   .check{display:flex;align-items:center;gap:6px;color:var(--ink);font-weight:500;min-height:24px}
+  .check input{margin:0}
   .preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .preview-card{background:var(--paper);border:1px solid var(--line);border-radius:5px;overflow:hidden;display:grid;grid-template-rows:auto 1fr}
   .preview-head{display:flex;justify-content:space-between;align-items:center;padding:6px 9px;border-bottom:1px solid var(--line)}
@@ -57,10 +64,34 @@
   .status.ok{color:#7dda7d;background:#132013}
   .status.err{color:var(--danger);background:#2a1414}
   .status.busy{color:#7db8da;background:#132033}
+  .palette-strip{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:2px;min-height:18px}
+  .swatch{height:20px;border-radius:2px;border:1px solid rgba(0,0,0,.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+  .palette-editor{border:1px solid var(--line);border-radius:4px;padding:6px 8px;background:var(--panel-deep)}
+  .palette-editor summary{color:var(--ink);font-weight:700;font-size:12px;cursor:pointer;padding:2px 0}
+  .palette-editor[open] summary{margin-bottom:8px}
+  .palette-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;align-items:center;margin-bottom:5px}
+  .palette-row input[type=text]{min-height:26px;padding:4px 6px;font-size:12px}
   .info{font-size:11px;color:var(--subtle);line-height:1.4;margin-top:4px}
+  .image-style{padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--panel-deep)}
+  .image-style-head{display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:4px}
+  .image-style-label{font-size:11px;color:var(--muted)}
+  .image-style-value{font-size:13px;color:var(--ink);font-weight:700}
+  .image-style-conf{font-size:10px;color:var(--muted)}
+  .image-style-meter{height:5px;border-radius:999px;background:#10100e;overflow:hidden;margin:4px 0}
+  .image-style-meter span{display:block;height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .2s ease}
+  .metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 8px;margin:6px 0 0;font-size:10px;color:var(--muted);line-height:1.3}
+  .metrics div{display:flex;justify-content:space-between;gap:4px}
+  .metrics dd{margin:0;color:var(--ink);font-variant-numeric:tabular-nums}
+  .auto-reasons{display:grid;gap:3px;padding-left:14px;margin:0;font-size:11px;color:var(--muted);line-height:1.35}
   .preview-chart{width:100%;height:auto;aspect-ratio:2/1;border:1px solid var(--line);border-radius:4px;background:var(--panel-deep)}
   .nav-frame{display:grid;place-items:center;padding:4px;border:1px solid var(--line);border-radius:4px;background:var(--panel-deep)}
   .nav-frame canvas{display:block;max-width:100%;height:auto}
+  .dialog-mask{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:1000;padding:16px}
+  .dialog-mask.show{display:flex}
+  .dialog{background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:420px;width:100%;padding:18px}
+  .dialog h2{margin:0 0 8px;font-size:15px}
+  .dialog p{margin:0 0 14px;color:var(--muted);font-size:12px;line-height:1.5}
+  .dialog .actions{display:flex;flex-direction:column;gap:8px}
   @media (max-width:820px){
     body{height:auto;min-height:100vh;overflow:auto}
     main{grid-template-columns:1fr;height:auto}
@@ -72,7 +103,7 @@
 </head>
 <body data-nav-layout="fixed">
 <header>
-  <h1><span class="brand"></span>黑白图片转换 (800x480)</h1>
+  <h1><span class="brand"></span>E6 图片转换工具 (16级灰度)</h1>
   <span class="host-info" id="hostInfo">检测中…</span>
 </header>
 
@@ -84,11 +115,33 @@
         <input type="file" id="file" accept="image/*">
       </label>
       <div id="imgInfo" class="info"></div>
+      <div class="image-style">
+        <div class="image-style-head">
+          <span class="image-style-label">检测类型</span>
+          <span class="image-style-conf" id="imageConf">-</span>
+        </div>
+        <div class="image-style-value" id="imageKind">等待分析</div>
+        <div class="image-style-meter"><span id="imageMeter"></span></div>
+        <dl class="metrics" id="imageMetrics"></dl>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend><h3>显示</h3></legend>
+      <label>调色板
+        <select id="paletteSelect"></select>
+      </label>
+      <div class="palette-strip" id="calibratedPreview"></div>
+      <div class="palette-strip" id="devicePreview"></div>
+      <details class="palette-editor">
+        <summary>查看灰度阶梯</summary>
+        <div id="paletteRows"></div>
+        <div class="info">0 = 纯黑, 15 = 纯白。根据驱动波形自动适配。</div>
+      </details>
     </fieldset>
 
     <fieldset>
       <legend><h3>处理</h3></legend>
-
       <label>预设
         <select id="presetSelect">
           <option value="auto">自动</option>
@@ -108,8 +161,14 @@
         <button type="button" id="resetAdjustBtn">重置图像调整</button>
       </div>
 
+      <div style="border:1px solid var(--line);border-radius:4px;padding:8px;background:var(--panel-deep)">
+        <h4 id="autoTitle">自动推荐</h4>
+        <ul class="auto-reasons" id="autoReasons"></ul>
+      </div>
+
       <h4>色调调整</h4>
       <div class="slider-row"><span>曝光</span><input type="range" id="exposure" min="-100" max="100" value="0"><output id="exposureVal">0.00</output></div>
+      <div class="slider-row"><span>饱和度</span><input type="range" id="saturation" min="-100" max="100" value="0"><output id="saturationVal">0.00</output></div>
       <div class="slider-row"><span>对比度</span><input type="range" id="contrast" min="-100" max="100" value="0"><output id="contrastVal">0.00</output></div>
       <div class="slider-row"><span>清晰度</span><input type="range" id="clarity" min="0" max="100" value="0"><output id="clarityVal">0.00</output></div>
       <div class="slider-row"><span>阴影</span><input type="range" id="shadow" min="0" max="100" value="0"><output id="shadowVal">0.00</output></div>
@@ -151,6 +210,7 @@
           <option value="ordered">有序</option>
           <option value="random">随机</option>
           <option value="quantizationOnly">仅量化</option>
+          <option value="blueNoise">蓝噪声</option>
         </select>
       </label>
       <label>内核
@@ -170,7 +230,19 @@
           <option value="shiauFan2">Shiau-Fan 2</option>
         </select>
       </label>
+      <label>色彩匹配
+        <select id="colorMatching">
+          <option value="rgb">Luma (亮度)</option>
+        </select>
+      </label>
       <label class="check"><input type="checkbox" id="serpentine" checked> 蛇形扫描</label>
+
+      <label>随机类型
+        <select id="randomType">
+          <option value="blackAndWhite">黑白 (强扰动)</option>
+          <option value="rgb">灰度 (弱扰动)</option>
+        </select>
+      </label>
 
       <div style="display:flex;gap:8px">
         <label style="flex:1">矩阵宽
@@ -180,6 +252,12 @@
           <input type="number" id="matrixH" value="4" min="1" max="16">
         </label>
       </div>
+
+      <label class="check"><input type="checkbox" id="edgePreserve"> 边缘保留（实验）</label>
+      <div class="slider-row"><span>强度</span><input type="range" id="edgePreserveStr" min="0" max="100" value="65"><output id="edgePreserveStrVal">0.65</output></div>
+
+      <label class="check"><input type="checkbox" id="edgeAntiAlias"> 边缘抗锯齿（实验）</label>
+      <div class="slider-row"><span>强度</span><input type="range" id="edgeAntiAliasStr" min="0" max="100" value="75"><output id="edgeAntiAliasStrVal">0.75</output></div>
     </fieldset>
 
     <fieldset>
@@ -237,18 +315,34 @@
         <div class="canvas-frame"><canvas id="canvasAdjusted"></canvas></div>
       </div>
       <div class="preview-card">
-        <div class="preview-head"><h2>二值化</h2><span>黑白抖动结果</span></div>
+        <div class="preview-head"><h2>抖动后</h2><span>校准灰度</span></div>
         <div class="canvas-frame"><canvas id="canvasDithered"></canvas></div>
+      </div>
+      <div class="preview-card">
+        <div class="preview-head"><h2>设备</h2><span>最终显示效果</span></div>
+        <div class="canvas-frame"><canvas id="canvasDevice"></canvas></div>
       </div>
     </div>
   </section>
 </main>
 
-<div class="dialog-mask" id="storageDialog" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); align-items:center; justify-content:center; z-index:1000; padding:16px;">
-  <div class="dialog" style="background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:420px; width:100%; padding:18px;">
+<div class="dialog-mask" id="sourceDialog">
+  <div class="dialog">
+    <h2>选择上传数据源</h2>
+    <p>由于是灰度图，Dithered 和 Device 的预览结果一致。通常都使用 Dithered（抖动后）。</p>
+    <div class="actions">
+      <button type="button" data-src="dithered" class="primary">使用 Dithered</button>
+      <button type="button" data-src="device">使用 Device</button>
+      <button type="button" data-src="cancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-mask" id="storageDialog">
+  <div class="dialog">
     <h2>保存到哪个存储？</h2>
-    <p style="color:var(--muted);font-size:12px;">bin 文件会保存到选中存储的下一个空槽位。</p>
-    <div class="actions" style="display:flex; flex-direction:column; gap:8px;">
+    <p>bin 文件会保存到选中存储的下一个空槽位。</p>
+    <div class="actions">
       <button type="button" data-storage="sd" class="primary" id="storageSdBtn">SD 卡</button>
       <button type="button" data-storage="flash" class="primary" id="storageFlashBtn">Flash</button>
       <button type="button" data-storage="cancel">取消</button>
@@ -261,9 +355,18 @@
 'use strict';
 
 const W = 800, H = 480;
-const FRAME_BYTES = W * H / 8;  // 48000 字节
+const FRAME_BYTES = W * H / 2; // 192000
+const THUMB_W = 200, THUMB_H = 120;
+const THUMB_BYTES = (THUMB_W * THUMB_H) / 2; // 12000
 
 const PAGE_ON_DEVICE = (location.protocol === 'http:' || location.protocol === 'https:');
+
+// 生成 16 级灰度调色板
+const GRAY_PALETTE = [];
+for(let i=0; i<16; i++) {
+  const c = (i * 17).toString(16).padStart(2, '0');
+  GRAY_PALETTE.push({name: String(i), color: '#' + c + c + c, deviceColor: '#' + c + c + c});
+}
 
 const KERNELS = {
   floydSteinberg:[[1,0,7/16],[-1,1,3/16],[0,1,5/16],[1,1,1/16]],
@@ -282,19 +385,23 @@ const KERNELS = {
 };
 
 const PRESETS = {
-  balanced:{exposure:0, contrast:0, clarity:0, shadow:0, highlight:0, rangeMode:'display', rangeStrength:0.75},
-  dynamic:{exposure:0.1, contrast:0.15, clarity:0, shadow:10, highlight:20, rangeMode:'off', rangeStrength:0},
-  vivid:{exposure:0.05, contrast:0.1, clarity:0, shadow:5, highlight:15, rangeMode:'off', rangeStrength:0},
-  soft:{exposure:-0.02, contrast:-0.1, clarity:0, shadow:0, highlight:5, rangeMode:'display', rangeStrength:0.85},
-  grayscale:{exposure:0, contrast:0.05, clarity:0, shadow:0, highlight:0, rangeMode:'display', rangeStrength:0.8},
-  restore:{exposure:0.08, contrast:0.2, clarity:0, shadow:25, highlight:30, rangeMode:'auto', rangeStrength:0.9},
-  posterScan:{exposure:0.05, contrast:0.15, clarity:0, shadow:10, highlight:10, rangeMode:'auto', rangeStrength:0.9}
+  balanced:{exposure:0, saturation:0, contrast:0, clarity:0, shadow:0, highlight:0, rangeMode:'display', rangeStrength:0.75},
+  dynamic:{exposure:0.1, saturation:0.3, contrast:0.15, clarity:0, shadow:10, highlight:20, rangeMode:'off', rangeStrength:0},
+  vivid:{exposure:0.05, saturation:0.6, contrast:0.1, clarity:0, shadow:5, highlight:15, rangeMode:'off', rangeStrength:0},
+  soft:{exposure:-0.02, saturation:-0.05, contrast:-0.1, clarity:0, shadow:0, highlight:5, rangeMode:'display', rangeStrength:0.85},
+  grayscale:{exposure:0, saturation:-1, contrast:0.05, clarity:0, shadow:0, highlight:0, rangeMode:'display', rangeStrength:0.8},
+  restore:{exposure:0.08, saturation:-0.1, contrast:0.2, clarity:0, shadow:25, highlight:30, rangeMode:'auto', rangeStrength:0.9},
+  posterScan:{exposure:0.05, saturation:0.1, contrast:0.15, clarity:0, shadow:10, highlight:10, rangeMode:'auto', rangeStrength:0.9}
 };
 
 let srcImage = null;
 let rotation = 0;
+let palettes = { 'gray16': { label: '16级灰度', colors: GRAY_PALETTE } };
+let currentKey = 'gray16';
 let lastBlock = null;
 let previewTimer = 0;
+let lastMetrics = null;
+let askingSource = false;
 
 let offsetX = 0;
 let offsetY = 0;
@@ -322,7 +429,6 @@ function showHostInfo(){
   }
 }
 
-/* ===== Bayer 动态生成 ===== */
 function makeBayer(size){
   if(size <= 1) return [[0]];
   if(size === 2) return [[0,2],[3,1]];
@@ -349,10 +455,151 @@ function normalizeBayerSize(v){
   return 16;
 }
 
+function getCurrentPalette(){ return palettes[currentKey]; }
+
+function hexToRgb(hex){
+  const h = hex.replace('#','');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+
 function setStatus(text, cls){
   const el = $('status');
   el.textContent = text;
   el.className = 'status ' + (cls || '');
+}
+
+function analyzeImage(imgData){
+  const d = imgData.data;
+  const w = imgData.width, h = imgData.height;
+  let n = 0;
+  let sumLuma = 0, sumLuma2 = 0;
+  let sumSat = 0, sumSat2 = 0;
+  let dark = 0, light = 0, gray = 0, highSat = 0;
+  const lumaValues = [];
+  const colorSet = new Set();
+
+  const stride = Math.max(1, Math.floor(Math.sqrt((w*h) / 9000)));
+  for(let y = 0; y < h; y += stride){
+    for(let x = 0; x < w; x += stride){
+      const i = (y*w+x)*4;
+      const r = d[i], g = d[i+1], b = d[i+2];
+      const luma = 0.2126*r + 0.7152*g + 0.0722*b;
+      const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+      const sat = mx === 0 ? 0 : (mx-mn)/mx;
+      n++;
+      sumLuma += luma;
+      sumLuma2 += luma*luma;
+      sumSat += sat;
+      sumSat2 += sat*sat;
+      lumaValues.push(luma);
+      if(luma < 36) dark++;
+      if(luma > 220) light++;
+      if(sat < 0.08) gray++;
+      if(sat > 0.72) highSat++;
+      colorSet.add(((r>>3)<<10) | ((g>>3)<<5) | (b>>3));
+    }
+  }
+
+  if(n === 0) return null;
+
+  const lumaMean = sumLuma / n;
+  const lumaStd = Math.sqrt(Math.max(0, sumLuma2/n - lumaMean*lumaMean));
+  const satMean = sumSat / n;
+  const satStd = Math.sqrt(Math.max(0, sumSat2/n - satMean*satMean));
+
+  lumaValues.sort((a,b) => a-b);
+  const p05 = lumaValues[Math.floor(lumaValues.length*0.05)] || 0;
+  const p95 = lumaValues[Math.floor(lumaValues.length*0.95)] || 0;
+
+  const grayRatio = gray/n;
+  const darkRatio = dark/n;
+  const lightRatio = light/n;
+  const highSatRatio = highSat/n;
+  const uniqueRatio = colorSet.size/n;
+
+  let kind = 'unknown';
+  let confidence = 0.5;
+
+  if(grayRatio > 0.75 && uniqueRatio < 0.15 && (darkRatio > 0.05 || lightRatio > 0.1)){
+    kind = 'lineArt'; confidence = Math.min(1, grayRatio);
+  } else if(grayRatio > 0.6 && uniqueRatio < 0.25 && darkRatio < 0.15){
+    kind = 'textOrUi'; confidence = Math.min(1, grayRatio);
+  } else if(satMean < 0.12 && grayRatio > 0.82){
+    kind = 'grayscale'; confidence = Math.min(1, grayRatio);
+  } else if(p95 - p05 < 90){
+    kind = 'lowContrastPhoto'; confidence = Math.min(1, 1 - (p95-p05)/180);
+  } else if(lumaStd > 70){
+    kind = 'highContrastPhoto'; confidence = Math.min(1, lumaStd/100);
+  } else {
+    kind = 'photo'; confidence = 0.6;
+  }
+
+  return {
+    kind, confidence,
+    metrics: {
+      lumaMean: lumaMean.toFixed(1),
+      lumaStd: lumaStd.toFixed(1),
+      lumaRange: (p95-p05).toFixed(1),
+      satMean: (satMean*100).toFixed(0) + '%',
+      satStd: (satStd*100).toFixed(0) + '%',
+      grayRatio: (grayRatio*100).toFixed(0) + '%',
+      darkRatio: (darkRatio*100).toFixed(0) + '%',
+      lightRatio: (lightRatio*100).toFixed(0) + '%',
+      highSatRatio: (highSatRatio*100).toFixed(0) + '%',
+      uniqueRatio: (uniqueRatio*100).toFixed(0) + '%'
+    }
+  };
+}
+
+function renderImageStyle(result){
+  if(!result){
+    $('imageKind').textContent = '-';
+    $('imageConf').textContent = '-';
+    $('imageMeter').style.width = '0%';
+    $('imageMetrics').innerHTML = '';
+    return;
+  }
+  const kindNames = {
+    photo:'照片', lowContrastPhoto:'低对比照片', highContrastPhoto:'高对比照片',
+    flatIllustration:'扁平插画', lineArt:'线稿', textOrUi:'文字/UI',
+    grayscale:'灰度图', pixelArt:'像素画', unknown:'未知'
+  };
+  $('imageKind').textContent = kindNames[result.kind] || result.kind;
+  $('imageConf').textContent = Math.round(result.confidence*100) + '%';
+  $('imageMeter').style.width = Math.round(result.confidence*100) + '%';
+
+  const m = result.metrics;
+  const rows = [
+    ['亮度均值', m.lumaMean], ['亮度标准差', m.lumaStd], ['亮度范围', m.lumaRange],
+    ['饱和度均值', m.satMean], ['饱和度标准差', m.satStd], ['灰色占比', m.grayRatio],
+    ['暗部占比', m.darkRatio], ['亮部占比', m.lightRatio], ['高饱和占比', m.highSatRatio],
+    ['唯一色占比', m.uniqueRatio]
+  ];
+  $('imageMetrics').innerHTML = rows.map(([k,v]) =>
+    '<div><dt>' + k + '</dt><dd>' + v + '</dd></div>'
+  ).join('');
+}
+
+function getAutoPreset(kind){
+  switch(kind){
+    case 'textOrUi': case 'lineArt': case 'grayscale': return 'balanced';
+    case 'lowContrastPhoto': return 'restore';
+    case 'highContrastPhoto': return 'soft';
+    default: return 'balanced';
+  }
+}
+
+function getAutoReasons(kind, opts){
+  const reasons = [];
+  if(kind === 'photo') reasons.push('照片类图像，使用均衡色调映射与适度对比度。');
+  if(kind === 'lowContrastPhoto') reasons.push('低对比照片，先做范围扩展再进行抖动。');
+  if(kind === 'highContrastPhoto') reasons.push('高对比照片，压缩亮度范围避免大面积纯黑纯白。');
+  if(kind === 'lineArt') reasons.push('线稿内容，保留边缘锐度，避免过度抖动。');
+  if(kind === 'textOrUi') reasons.push('文字/UI 内容，优先清晰可读性。');
+  if(kind === 'grayscale') reasons.push('灰度图像，使用灰度调色板与中等对比度。');
+  if(opts && opts.rangeMode && opts.rangeMode !== 'off') reasons.push('启用动态范围压缩以适配屏幕亮度范围。');
+  if(reasons.length === 0) reasons.push('自动推荐基于图像分类与调色板亮度范围。');
+  return reasons.slice(0, 3);
 }
 
 function getRotatedImage(){
@@ -526,6 +773,7 @@ function drawImageData(canvas, imgData){
 
 function applyToneMapping(data, opts){
   const expMul = Math.pow(2, opts.exposure);
+  const satMul = Math.max(0, 1 + opts.saturation);
   const contrastMul = opts.contrast < 0 ? Math.max(0.5, 1 + opts.contrast * 0.5) : 1 + opts.contrast;
   const shadow = opts.shadow, highlight = opts.highlight;
   const lut = new Uint8ClampedArray(256);
@@ -547,9 +795,36 @@ function applyToneMapping(data, opts){
     lut[i] = Math.round(Math.min(1, Math.max(0, v)) * 255);
   }
   for(let i = 0; i < data.length; i += 4){
-    data[i]   = lut[data[i]];
-    data[i+1] = lut[data[i+1]];
-    data[i+2] = lut[data[i+2]];
+    let r = lut[data[i]], g = lut[data[i+1]], b = lut[data[i+2]];
+    if(satMul !== 1){
+      const rn = r/255, gn = g/255, bn = b/255;
+      const mx = Math.max(rn,gn,bn), mn = Math.min(rn,gn,bn);
+      const l = (mx+mn)/2;
+      if(mx !== mn){
+        const delta = mx - mn;
+        const sat = l > 0.5 ? delta / (2-mx-mn) : delta / Math.max(mx+mn, 1e-6);
+        let hue;
+        if(mx === rn) hue = ((gn-bn)/delta + (gn<bn?6:0))/6;
+        else if(mx === gn) hue = ((bn-rn)/delta + 2)/6;
+        else hue = ((rn-gn)/delta + 4)/6;
+        const ns = Math.min(1, Math.max(0, sat * satMul));
+        const c = (1 - Math.abs(2*l - 1)) * ns;
+        const x = c * (1 - Math.abs((hue*6) % 2 - 1));
+        const m = l - c/2;
+        const sector = Math.floor(hue*6) % 6;
+        let nr, ng, nb;
+        if(sector === 0){ nr=c+m; ng=x+m; nb=m; }
+        else if(sector === 1){ nr=x+m; ng=c+m; nb=m; }
+        else if(sector === 2){ nr=m; ng=c+m; nb=x+m; }
+        else if(sector === 3){ nr=m; ng=x+m; nb=c+m; }
+        else if(sector === 4){ nr=x+m; ng=m; nb=c+m; }
+        else { nr=c+m; ng=m; nb=x+m; }
+        r = Math.round(Math.min(1, Math.max(0, nr))*255);
+        g = Math.round(Math.min(1, Math.max(0, ng))*255);
+        b = Math.round(Math.min(1, Math.max(0, nb))*255);
+      }
+    }
+    data[i] = r; data[i+1] = g; data[i+2] = b;
   }
 }
 
@@ -621,23 +896,27 @@ function applyRangeFitting(data, opts){
   }
 }
 
-/* ====== 核心：黑白抖动 (0=黑, 1=白) ====== */
-function dither(data, opts){
+function dither(data, palette, opts){
   const w = W, h = H, n = w*h;
   const buf = new Float32Array(n);
   for(let i = 0; i < n; i++){
-    buf[i] = 0.2126*data[i*4] + 0.7152*data[i*4+1] + 0.0722*data[i*4+2];
+    buf[i] = 0.299*data[i*4] + 0.587*data[i*4+1] + 0.114*data[i*4+2];
   }
   const block = new Uint8Array(n);
 
+  function nearestGray(v) {
+    let idx = Math.round(v / 255 * 15);
+    return Math.max(0, Math.min(15, idx));
+  }
+
   if(opts.type === 'quantizationOnly'){
     for(let i = 0; i < n; i++){
-      block[i] = buf[i] < 128 ? 0 : 1;
+      block[i] = nearestGray(buf[i]);
     }
     return block;
   }
 
-  if(opts.type === 'ordered'){
+  if(opts.type === 'ordered' || opts.type === 'blueNoise'){
     const mw = normalizeBayerSize(opts.matrixW);
     const mh = normalizeBayerSize(opts.matrixH);
     const size = Math.max(mw, mh);
@@ -647,64 +926,110 @@ function dither(data, opts){
     for(let y = 0; y < h; y++){
       for(let x = 0; x < w; x++){
         const i = y*w+x;
-        const t = (M[y%m][x%m]/div - 0.5) * 255;
-        const v = Math.max(0, Math.min(255, buf[i] + t));
-        block[i] = v < 128 ? 0 : 1;
+        const t = (M[y%m][x%m]/div - 0.5) * 128;
+        block[i] = nearestGray(buf[i] + t);
       }
     }
     return block;
   }
 
   if(opts.type === 'random'){
+    const bw = $('randomType').value === 'blackAndWhite';
     for(let i = 0; i < n; i++){
-      block[i] = buf[i] < Math.random()*255 ? 0 : 1;
+      const r = buf[i] + (Math.random()-0.5)*128;
+      block[i] = nearestGray(r);
     }
     return block;
   }
 
+  // 误差扩散
   const kernel = KERNELS[opts.kernel] || KERNELS.floydSteinberg;
   for(let y = 0; y < h; y++){
     const reverse = opts.serpentine && (y % 2 === 1);
     for(let xi = 0; xi < w; xi++){
       const x = reverse ? (w - 1 - xi) : xi;
       const i = y*w+x;
-      const val = Math.max(0, Math.min(255, buf[i]));
-      const newVal = val < 128 ? 0 : 255;
-      block[i] = newVal === 0 ? 0 : 1;  // 0 = 黑, 1 = 白
-      const err = val - newVal;
-
+      const v = Math.max(0, Math.min(255, buf[i]));
+      const idx = nearestGray(v);
+      block[i] = idx;
+      const r_val = idx * 17;
+      const err = v - r_val;
       for(const [dx, dy, wt] of kernel){
         const nx = reverse ? x - dx : x + dx;
         const ny = y + dy;
         if(nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
-        buf[ny*w+nx] += err * wt;
+        const ni = ny*w+nx;
+        buf[ni] += err * wt;
       }
     }
   }
   return block;
 }
 
-/* ====== 1bpp 打包 (48000 字节) ====== */
-function pack(block){
+function blockToImageData(block, rgbList){
+  const img = new ImageData(W, H);
+  const d = img.data;
+  for(let i = 0; i < block.length; i++){
+    const c = rgbList[block[i]];
+    d[i*4] = c[0]; d[i*4+1] = c[1]; d[i*4+2] = c[2]; d[i*4+3] = 255;
+  }
+  return img;
+}
+
+function pack(block, palette){
   const buf = new Uint8Array(FRAME_BYTES);
+  let k = 0;
   for(let y = 0; y < H; y++){
-    for(let x = 0; x < W; x++){
-      if(block[y*W+x] === 0){  // 0 表示黑色
-        buf[y * (W >> 3) + (x >> 3)] |= (0x80 >> (x & 7));
-      }
+    for(let x = 0; x < W; x += 2){
+      const hi = block[y*W+x] & 0x0F;
+      const lo = block[y*W+x+1] & 0x0F;
+      buf[k++] = (hi << 4) | lo;
     }
   }
   return buf;
 }
 
-function blockToImageData(block){
-  const img = new ImageData(W, H);
-  const d = img.data;
-  for(let i = 0; i < block.length; i++){
-    const c = block[i] === 0 ? 0 : 255;
-    d[i*4] = c; d[i*4+1] = c; d[i*4+2] = c; d[i*4+3] = 255;
+function postProcessEdges(adjustedData, ditheredData, colors, opts){
+  const useEdgePreserve = opts.edgePreserve && opts.edgePreserveStrength > 0;
+  const useEdgeAntiAlias = opts.edgeAntiAlias && opts.edgeAntiAliasStrength > 0;
+  if(!useEdgePreserve && !useEdgeAntiAlias) return;
+
+  const w = W, h = H;
+  const srcLuma = new Float32Array(w*h);
+  for(let i = 0; i < w*h; i++){
+    srcLuma[i] = 0.2126*adjustedData[i*4] + 0.7152*adjustedData[i*4+1] + 0.0722*adjustedData[i*4+2];
   }
-  return img;
+
+  function nearestGray(r,g,b){
+    const v = 0.299*r + 0.587*g + 0.114*b;
+    let idx = Math.round(v / 255 * 15);
+    return Math.max(0, Math.min(15, idx));
+  }
+
+  for(let y = 1; y < h-1; y++){
+    for(let x = 1; x < w-1; x++){
+      const dx = Math.abs(srcLuma[y*w+x+1] - srcLuma[y*w+x-1]);
+      const dy = Math.abs(srcLuma[(y+1)*w+x] - srcLuma[(y-1)*w+x]);
+      const mag = Math.sqrt(dx*dx + dy*dy);
+      const idx = (y*w+x)*4;
+
+      if(useEdgePreserve && mag > 42 && Math.random() < opts.edgePreserveStrength){
+        const ci = nearestGray(adjustedData[idx], adjustedData[idx+1], adjustedData[idx+2]);
+        const rgb = colors[ci].rgb;
+        ditheredData[idx] = rgb[0];
+        ditheredData[idx+1] = rgb[1];
+        ditheredData[idx+2] = rgb[2];
+      } else if(useEdgeAntiAlias && mag > 20 && mag <= 42 && Math.random() < opts.edgeAntiAliasStrength){
+        const ci = nearestGray(adjustedData[idx], adjustedData[idx+1], adjustedData[idx+2]);
+        const rgb = colors[ci].rgb;
+        if(((x + y) & 1) === 0){
+          ditheredData[idx] = rgb[0];
+          ditheredData[idx+1] = rgb[1];
+          ditheredData[idx+2] = rgb[2];
+        }
+      }
+    }
+  }
 }
 
 function drawToneCurve(canvas, opts){
@@ -808,25 +1133,90 @@ function drawHistogram(canvas, imgData){
   if(!imgData) return;
   const data = imgData.data;
   const bins = 64;
-  const l = new Array(bins).fill(0);
+  const r = new Array(bins).fill(0), g = new Array(bins).fill(0), b = new Array(bins).fill(0), l = new Array(bins).fill(0);
   const step = Math.max(4, Math.floor(data.length / 4 / 9000) * 4);
   for(let i = 0; i < data.length; i += step){
     if(data[i+3] === 0) continue;
+    r[Math.min(bins-1, Math.floor(data[i]/256*bins))]++;
+    g[Math.min(bins-1, Math.floor(data[i+1]/256*bins))]++;
+    b[Math.min(bins-1, Math.floor(data[i+2]/256*bins))]++;
     const lv = 0.2126*data[i]+0.7152*data[i+1]+0.0722*data[i+2];
     l[Math.min(bins-1, Math.floor(lv/256*bins))]++;
   }
-  const max = Math.max(1, ...l);
+  const max = Math.max(1, ...r, ...g, ...b, ...l);
   const barW = (w-2*pad)/bins;
-  ctx.fillStyle = '#a5a49d';
+  const draw = (arr, color) => {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.28;
+    for(let i = 0; i < bins; i++){
+      const bh = arr[i]/max*(h-2*pad);
+      ctx.fillRect(pad + i*barW, h-pad-bh, Math.max(1, barW-1), bh);
+    }
+    ctx.globalAlpha = 1;
+  };
+  draw(r, '#d64545');
+  draw(g, '#3f9b62');
+  draw(b, '#3d6fd8');
+  ctx.strokeStyle = '#a5a49d';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
   for(let i = 0; i < bins; i++){
-    const bh = l[i]/max*(h-2*pad);
-    ctx.fillRect(pad + i*barW, h-pad-bh, Math.max(1, barW-1), bh);
+    const x = pad + (i/(bins-1))*(w-2*pad);
+    const y = h-pad-(l[i]/max)*(h-2*pad);
+    if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
+  ctx.stroke();
+}
+
+function renderPaletteStrips(){
+  const p = getCurrentPalette();
+  const cal = $('calibratedPreview'), dev = $('devicePreview');
+  cal.innerHTML = ''; dev.innerHTML = '';
+  p.colors.forEach(c => {
+    const s1 = document.createElement('div');
+    s1.className = 'swatch'; s1.style.background = c.color; s1.title = c.color;
+    cal.appendChild(s1);
+    const s2 = document.createElement('div');
+    s2.className = 'swatch'; s2.style.background = c.deviceColor; s2.title = c.deviceColor;
+    dev.appendChild(s2);
+  });
+}
+
+function renderPaletteEditor(){
+  const p = getCurrentPalette();
+  const rows = $('paletteRows');
+  rows.innerHTML = '';
+  p.colors.forEach((c, idx) => {
+    const row = document.createElement('div');
+    row.className = 'palette-row';
+    const name = document.createElement('span');
+    name.style.fontSize = '12px';
+    name.style.color = 'var(--ink)';
+    name.textContent = '灰度 ' + c.name;
+    const cal = document.createElement('div');
+    cal.style.background = c.color;
+    cal.style.height = '16px';
+    cal.style.borderRadius = '2px';
+    row.append(name, cal);
+    rows.appendChild(row);
+  });
+}
+
+function populatePaletteSelect(){
+  const sel = $('paletteSelect');
+  sel.innerHTML = '';
+  for(const key of Object.keys(palettes)){
+    const opt = document.createElement('option');
+    opt.value = key; opt.textContent = palettes[key].label;
+    sel.appendChild(opt);
+  }
+  sel.value = currentKey;
 }
 
 function readSliderOptions(){
   return {
     exposure: ($('exposure').value/100),
+    saturation: ($('saturation').value/100),
     contrast: ($('contrast').value/100),
     clarity: Math.min(1, Math.max(0, $('clarity').value/100)),
     shadow: Math.min(1, Math.max(0, $('shadow').value/100)),
@@ -836,8 +1226,18 @@ function readSliderOptions(){
     lowPct: parseFloat($('lowPct').value) || 0.01,
     highPct: parseFloat($('highPct').value) || 0.99,
     matrixW: parseInt($('matrixW').value) || 4,
-    matrixH: parseInt($('matrixH').value) || 4
+    matrixH: parseInt($('matrixH').value) || 4,
+    edgePreserve: $('edgePreserve').checked,
+    edgePreserveStrength: $('edgePreserveStr').value/100,
+    edgeAntiAlias: $('edgeAntiAlias').checked,
+    edgeAntiAliasStrength: $('edgeAntiAliasStr').value/100
   };
+}
+
+function getProcessingOptions(){
+  const presetName = $('presetSelect').value;
+  if(presetName === 'auto') return null;
+  return readSliderOptions();
 }
 
 function applyPresetToUI(presetName){
@@ -845,6 +1245,7 @@ function applyPresetToUI(presetName){
   const p = PRESETS[presetName];
   if(!p) return;
   $('exposure').value = Math.round(p.exposure*100);
+  $('saturation').value = Math.round(p.saturation*100);
   $('contrast').value = Math.round(p.contrast*100);
   $('clarity').value = Math.round(p.clarity*100);
   $('shadow').value = Math.round(p.shadow);
@@ -854,16 +1255,36 @@ function applyPresetToUI(presetName){
   updateSliderLabels();
 }
 
-function updateSliderLabels(){
-  $('exposureVal').textContent = ($('exposure').value/100).toFixed(2);
-  $('contrastVal').textContent = ($('contrast').value/100).toFixed(2);
-  $('clarityVal').textContent = ($('clarity').value/100).toFixed(2);
-  $('shadowVal').textContent = ($('shadow').value/100).toFixed(2);
-  $('highlightVal').textContent = ($('highlight').value/100).toFixed(2);
-  $('rangeStrengthVal').textContent = ($('rangeStrength').value/100).toFixed(2);
-  $('scaleVal').textContent = (parseInt($('scaleSlider').value)/100).toFixed(2);
-  $('offsetXVal').textContent = $('offsetXSlider').value;
-  $('offsetYVal').textContent = $('offsetYSlider').value;
+function getAutoOptions(metrics){
+  const presetName = getAutoPreset(metrics.kind);
+  const p = PRESETS[presetName];
+  return {
+    exposure: p.exposure,
+    saturation: p.saturation,
+    contrast: p.contrast,
+    clarity: p.clarity,
+    shadow: p.shadow/100,
+    highlight: p.highlight/100,
+    rangeMode: p.rangeMode,
+    rangeStrength: p.rangeStrength,
+    lowPct: 0.01,
+    highPct: 0.99,
+    matrixW: 4, matrixH: 4,
+    edgePreserve: false, edgePreserveStrength: 0.65,
+    edgeAntiAlias: false, edgeAntiAliasStrength: 0.75,
+    presetName
+  };
+}
+
+function updateAutoRecommendation(metrics, opts){
+  const presetName = opts.presetName || getAutoPreset(metrics.kind);
+  const presetNames = {
+    balanced:'均衡', dynamic:'动态', vivid:'鲜艳', soft:'柔和',
+    grayscale:'灰度', restore:'还原', posterScan:'扫描海报'
+  };
+  $('autoTitle').textContent = '自动推荐：' + (presetNames[presetName] || presetName);
+  const reasons = getAutoReasons(metrics.kind, opts);
+  $('autoReasons').innerHTML = reasons.map(r => '<li>' + r + '</li>').join('');
 }
 
 function refresh(){
@@ -874,6 +1295,7 @@ function refresh(){
     const sz = getScaledSize();
     if(!sz) throw new Error('无法读取图像尺寸');
 
+    const palette = getCurrentPalette();
     const fitMode = $('fitMode').value;
 
     updateOffsetRanges(false);
@@ -890,20 +1312,33 @@ function refresh(){
     const ctx = fitted.getContext('2d', { willReadFrequently: true });
     const imgData = ctx.getImageData(0, 0, W, H);
 
-    let opts = readSliderOptions();
-    if($('presetSelect').value === 'auto') {
-      // 简单的自动根据图像亮度调整
-      let sum = 0;
-      for(let i = 0; i < imgData.data.length; i += 40){
-        sum += imgData.data[i];
-      }
-      opts.exposure = 0; opts.contrast = 0;
+    let nonBlack = 0;
+    for(let i = 0; i < imgData.data.length; i += 40){
+      if(imgData.data[i] > 8 || imgData.data[i+1] > 8 || imgData.data[i+2] > 8) nonBlack++;
+    }
+    if(nonBlack < 5){
+      setStatus('输入图像几乎全黑，请检查原图是否透明/全黑', 'err');
+      return;
+    }
+
+    const metrics = analyzeImage(imgData);
+    if(!metrics) throw new Error('图像分析失败');
+    lastMetrics = metrics;
+    renderImageStyle(metrics);
+
+    let opts = getProcessingOptions();
+    if(!opts){
+      opts = getAutoOptions(metrics);
+      updateAutoRecommendation(metrics, opts);
+    } else {
+      updateAutoRecommendation(metrics, {presetName: $('presetSelect').value});
     }
 
     applyToneMapping(imgData.data, opts);
     if(opts.clarity > 0) applyClarity(imgData.data, opts.clarity);
     applyRangeFitting(imgData.data, opts);
 
+    const adjustedRaw = new Uint8ClampedArray(imgData.data);
     const adjustedCopy = new ImageData(new Uint8ClampedArray(imgData.data), W, H);
     drawImageData($('canvasAdjusted'), adjustedCopy);
 
@@ -911,15 +1346,29 @@ function refresh(){
     drawRangeMap($('rangeMap'), opts);
     drawHistogram($('histogram'), adjustedCopy);
 
-    const block = dither(imgData.data, {
+    const block = dither(imgData.data, palette, {
       type: $('ditherType').value,
       kernel: $('kernel').value,
-      serpentine: $('serpentine').checked
+      serpentine: $('serpentine').checked,
+      matching: 'rgb'
     });
     lastBlock = block;
 
-    const ditheredImageData = blockToImageData(block);
+    const calColors = palette.colors.map(c => ({rgb: hexToRgb(c.color), lab: null}));
+    const devColors = palette.colors.map(c => ({rgb: hexToRgb(c.deviceColor), lab: null}));
+    const calRgb = palette.colors.map(c => hexToRgb(c.color));
+    const devRgb = palette.colors.map(c => hexToRgb(c.deviceColor));
+
+    const ditheredImageData = blockToImageData(block, calRgb);
+    const deviceImageData = blockToImageData(block, devRgb);
+
+    if(opts.edgePreserve || opts.edgeAntiAlias){
+      postProcessEdges(adjustedRaw, ditheredImageData.data, calColors, opts);
+      postProcessEdges(adjustedRaw, deviceImageData.data, devColors, opts);
+    }
+
     drawImageData($('canvasDithered'), ditheredImageData);
+    drawImageData($('canvasDevice'), deviceImageData);
 
     $('downloadBtn').disabled = false;
     $('uploadBtn').disabled = false;
@@ -935,6 +1384,39 @@ function scheduleRefresh(){
   if(!srcImage) return;
   clearTimeout(previewTimer);
   previewTimer = setTimeout(refresh, 60);
+}
+
+function updateSliderLabels(){
+  $('exposureVal').textContent = ($('exposure').value/100).toFixed(2);
+  $('saturationVal').textContent = ($('saturation').value/100).toFixed(2);
+  $('contrastVal').textContent = ($('contrast').value/100).toFixed(2);
+  $('clarityVal').textContent = ($('clarity').value/100).toFixed(2);
+  $('shadowVal').textContent = ($('shadow').value/100).toFixed(2);
+  $('highlightVal').textContent = ($('highlight').value/100).toFixed(2);
+  $('rangeStrengthVal').textContent = ($('rangeStrength').value/100).toFixed(2);
+  $('edgePreserveStrVal').textContent = ($('edgePreserveStr').value/100).toFixed(2);
+  $('edgeAntiAliasStrVal').textContent = ($('edgeAntiAliasStr').value/100).toFixed(2);
+  $('scaleVal').textContent = (parseInt($('scaleSlider').value)/100).toFixed(2);
+  $('offsetXVal').textContent = $('offsetXSlider').value;
+  $('offsetYVal').textContent = $('offsetYSlider').value;
+}
+
+function askSource(){
+  return new Promise(resolve => {
+    if(askingSource) { resolve('cancel'); return; }
+    askingSource = true;
+    const dlg = $('sourceDialog');
+    dlg.classList.add('show');
+    const handler = e => {
+      if(e.target.tagName === 'BUTTON' && e.target.dataset.src){
+        dlg.classList.remove('show');
+        dlg.removeEventListener('click', handler);
+        askingSource = false;
+        resolve(e.target.dataset.src);
+      }
+    };
+    dlg.addEventListener('click', handler);
+  });
 }
 
 function askStorage(info){
@@ -956,11 +1438,11 @@ function askStorage(info){
       flashBtn.textContent = 'Flash';
     }
 
-    dlg.style.display = 'flex';
+    dlg.classList.add('show');
 
     const handler = e => {
       if (e.target.tagName === 'BUTTON' && e.target.dataset.storage){
-        dlg.style.display = 'none';
+        dlg.classList.remove('show');
         dlg.removeEventListener('click', handler);
         const v = e.target.dataset.storage;
         resolve(v === 'cancel' ? null : v);
@@ -968,6 +1450,24 @@ function askStorage(info){
     };
     dlg.addEventListener('click', handler);
   });
+}
+
+function generateThumb(bin){
+  var tw = THUMB_W, th = THUMB_H;
+  var thumb = new Uint8Array(tw * th / 2);
+  for (var ty = 0; ty < th; ty++){
+    var sy = ty * 4;
+    var srcBase = sy * 400;
+    var dstBase = ty * 100;
+    for (var tx = 0; tx < tw; tx++){
+      var sx = tx * 4;
+      var b = bin[srcBase + (sx >> 1)];
+      var nib = (sx & 1) ? (b & 0xF) : ((b >> 4) & 0xF);
+      if (tx & 1) thumb[dstBase + (tx >> 1)] |= nib;
+      else        thumb[dstBase + (tx >> 1)]  = (nib << 4);
+    }
+  }
+  return thumb;
 }
 
 function bindEvents(){
@@ -991,7 +1491,8 @@ function bindEvents(){
     img.src = url;
   });
 
-  ['exposure','contrast','clarity','shadow','highlight','rangeStrength'].forEach(id => {
+  ['exposure','saturation','contrast','clarity','shadow','highlight','rangeStrength',
+   'edgePreserveStr','edgeAntiAliasStr'].forEach(id => {
     $(id).addEventListener('input', () => {
       if($('presetSelect').value === 'auto') $('presetSelect').value = 'manual';
       updateSliderLabels();
@@ -1004,7 +1505,8 @@ function bindEvents(){
     scheduleRefresh();
   });
 
-  ['ditherType','kernel','serpentine','rangeMode'].forEach(id => {
+  ['ditherType','kernel','colorMatching','serpentine','rangeMode','randomType',
+   'edgePreserve','edgeAntiAlias'].forEach(id => {
     $(id).addEventListener('change', scheduleRefresh);
   });
 
@@ -1039,8 +1541,11 @@ function bindEvents(){
   });
 
   $('autoAdjustBtn').addEventListener('click', () => {
-    $('presetSelect').value = 'balanced';
-    applyPresetToUI('balanced');
+    if(!lastMetrics) return;
+    const opts = getAutoOptions(lastMetrics);
+    applyPresetToUI(opts.presetName);
+    $('presetSelect').value = opts.presetName;
+    updateAutoRecommendation(lastMetrics, opts);
     refresh();
     setStatus('已应用自动图像调整', 'ok');
   });
@@ -1048,6 +1553,7 @@ function bindEvents(){
   $('resetAdjustBtn').addEventListener('click', () => {
     $('presetSelect').value = 'manual';
     $('exposure').value = 0;
+    $('saturation').value = 0;
     $('contrast').value = 0;
     $('clarity').value = 0;
     $('shadow').value = 0;
@@ -1056,6 +1562,8 @@ function bindEvents(){
     $('rangeStrength').value = 100;
     $('lowPct').value = 0.01;
     $('highPct').value = 0.99;
+    $('edgePreserve').checked = false;
+    $('edgeAntiAlias').checked = false;
     updateSliderLabels();
     scheduleRefresh();
     setStatus('已重置图像调整', 'ok');
@@ -1082,18 +1590,30 @@ function bindEvents(){
     scheduleRefresh();
   });
 
-  $('downloadBtn').addEventListener('click', () => {
+  $('paletteSelect').addEventListener('change', () => {
+    currentKey = $('paletteSelect').value;
+    renderPaletteStrips();
+    renderPaletteEditor();
+    scheduleRefresh();
+  });
+
+  $('downloadBtn').addEventListener('click', async () => {
     if(!lastBlock) return;
+
+    const source = await askSource();
+    if (source === 'cancel'){ setStatus('已取消下载', ''); return; }
+    const sourceLabel = source === 'dithered' ? 'Dithered（校准色）' : 'Device（设备原生色）';
+
     try {
-      const bin = pack(lastBlock);
+      const bin = pack(lastBlock, getCurrentPalette());
       const blob = new Blob([bin], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'image_bw_' + Date.now() + '.bin';
+      a.download = 'image_' + source + '_' + Date.now() + '.bin';
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
-      setStatus('已下载 ' + bin.length + ' 字节（800×480 黑白）', 'ok');
+      setStatus('已下载 ' + bin.length + ' 字节（' + sourceLabel + '）', 'ok');
     } catch(e){
       setStatus('下载失败：' + e.message, 'err');
     }
@@ -1102,13 +1622,17 @@ function bindEvents(){
   $('uploadBtn').addEventListener('click', async () => {
     if(!lastBlock) return;
 
+    const source = await askSource();
+    if(source === 'cancel'){ setStatus('已取消上传', ''); return; }
+    const sourceLabel = source === 'dithered' ? 'Dithered（校准色）' : 'Device（设备原生色）';
+
     $('uploadBtn').disabled = true;
     $('downloadBtn').disabled = true;
     $('uploadToBinsBtn').disabled = true;
 
     let bin;
     try {
-      bin = pack(lastBlock);
+      bin = pack(lastBlock, getCurrentPalette());
     } catch(e){
       setStatus('生成失败：' + e.message, 'err');
       $('uploadBtn').disabled = false;
@@ -1145,7 +1669,7 @@ function bindEvents(){
       return;
     }
 
-    setStatus('设备在线，正在上传 ' + bin.length + ' 字节…', 'busy');
+    setStatus('设备在线，正在上传 ' + bin.length + ' 字节（' + sourceLabel + '）…', 'busy');
     try {
       const r = await fetch(deviceUrl('/upload'), {
         method: 'POST',
@@ -1154,7 +1678,7 @@ function bindEvents(){
       });
       const text = await r.text();
       if(!r.ok) throw new Error('HTTP ' + r.status + ': ' + text);
-      setStatus('上传成功\n接收 ' + text + ' 字节\n屏幕刷新约需 2~5 秒', 'ok');
+      setStatus('上传成功\n接收 ' + text + ' 字节\n屏幕刷新约需 5~15 秒', 'ok');
     } catch(e){
       setStatus('上传失败：' + e.message, 'err');
     } finally {
@@ -1166,6 +1690,10 @@ function bindEvents(){
 
   $('uploadToBinsBtn').addEventListener('click', async () => {
     if (!lastBlock) return;
+
+    const source = await askSource();
+    if (source === 'cancel'){ setStatus('已取消上传', ''); return; }
+    const sourceLabel = source === 'dithered' ? 'Dithered（校准色）' : 'Device（设备原生色）';
 
     let listData = null;
     try {
@@ -1189,7 +1717,7 @@ function bindEvents(){
 
     let bin;
     try {
-      bin = pack(lastBlock);
+      bin = pack(lastBlock, getCurrentPalette());
     } catch(e){
       setStatus('生成失败：' + e.message, 'err');
       return;
@@ -1209,8 +1737,19 @@ function bindEvents(){
       const text = await r.text();
       if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + text);
 
+      try {
+        const thumbBuf = generateThumb(new Uint8Array(bin));
+        await fetch('/bins/thumb_upload/' + nextIdx + '?storage=' + storage, {
+          method: 'POST',
+          headers: {'Content-Type':'application/octet-stream'},
+          body: thumbBuf
+        });
+      } catch(te) {
+        console.warn('thumb upload fail', te);
+      }
+
       setStatus('已保存到 ' + storageText + ' 槽位 ' + (nextIdx + 1) +
-                '（' + text + ' 字节）', 'ok');
+                '（' + text + ' 字节，' + sourceLabel + '）', 'ok');
     } catch(e) {
       setStatus('上传失败：' + e.message, 'err');
     } finally {
@@ -1222,6 +1761,9 @@ function bindEvents(){
 }
 
 function init(){
+  populatePaletteSelect();
+  renderPaletteStrips();
+  renderPaletteEditor();
   showHostInfo();
   bindEvents();
   updateSliderLabels();

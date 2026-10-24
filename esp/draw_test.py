@@ -5,18 +5,18 @@
 #   >>> draw_test.show()                          # 用默认字模 + 默认文本
 #   >>> draw_test.show("中文测试")                # 自定义文本
 #   >>> draw_test.show("你好", size=48)           # 指定字号
-#   >>> draw_test.show("你好", family="SmileySans-Oblique", size=32)
+#   >>> draw_test.show("你好", family="SmileySans-Oblique", size=32, fg=0, bg=15)
 #
-# 自动探测可用字模：优先 SD（v4 多 chunk），否则 Flash。
+# 自动探测可用字模：优先 SD，否则 Flash。
 
 import gc
 import os
-from jd7601 import JD7601
-from text_renderer import render_and_display_stream
+import epd
+from text_renderer import render_full
 
 # ---------- 探测 ----------
 
-SD_FONT_DIR = '/sd/e6/fonts'
+SD_FONT_DIR = '/sd/fonts'
 FLASH_FONT_DIR = '/www/fonts'
 
 
@@ -101,7 +101,6 @@ def find_paths(family=None, size=None):
             if not n.endswith('.bin'):
                 continue
             base = n[:-4]
-            # 形如 family_size_0 / family_size / font_32
             parts = base.rsplit('_', 2)
             if len(parts) == 3:
                 try:
@@ -128,9 +127,10 @@ def find_paths(family=None, size=None):
 
 # ---------- 渲染 ----------
 
-def show(text="你好，世界！\nESP32 独立渲染 OK",
+def show(text="Hello 16-Level Gray!\nESP32 SSD1677 OK",
          family=None, size=None, direction=0,
-         align='center', valign='center'):
+         align='center', valign='center',
+         fg=0, bg=15):
     paths, storage = find_paths(family=family, size=size)
     if not paths:
         print('[draw_test] 未找到可用字模。请先运行 draw_test.list_families() 查看。')
@@ -157,20 +157,34 @@ def show(text="你好，世界！\nESP32 独立渲染 OK",
         else:
             size = 32
 
-    epd = JD7601()
     gc.collect()
-    print('[draw_test] 开始渲染 (size=%d)…' % size)
-    render_and_display_stream(
-        epd, text,
-        font_paths=paths, size=size,
+    print('[draw_test] 开始渲染 (size=%d, fg=%d, bg=%d)…' % (size, fg, bg))
+
+    bin_data = render_full(
+        text,
+        size=size,
+        font_paths=paths,
         direction=direction,
         align=align, valign=valign,
         line_height=1.3,
-        default_style={'fg': 'black', 'bg': 'white'},
-        band_rows=8,
+        default_style={'fg': fg, 'bg': bg},
         margin_top=40, margin_bottom=40,
         margin_left=40, margin_right=40,
     )
+
+    print('[draw_test] 写入屏幕…')
+    epd.init()
+
+    # 4bpp 800x480：每行 400 字节，共 480 行
+    W_BYTES = 800 // 2
+    for y in range(480):
+        start_idx = y * W_BYTES
+        end_idx = start_idx + W_BYTES
+        epd._display.buffer[start_idx:end_idx] = bin_data[start_idx:end_idx]
+
+    epd.show()
+    epd.sleep()
+
     print('[draw_test] 完成')
     return True
 

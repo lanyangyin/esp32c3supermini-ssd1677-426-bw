@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>E6 黑白 BIN 编辑器</title>
+<title>E6 BIN 编辑器 (16级灰度)</title>
 <style>
   :root{
     color-scheme:dark;
@@ -26,14 +26,12 @@
     background:#1b1a17;min-height:48px;gap:10px;flex-wrap:wrap;
   }
   header h1{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
-  header .brand{
-    display:inline-block;width:10px;height:14px;border:2px solid var(--accent-strong);
-  }
+  header .brand{display:inline-block;width:10px;height:14px;border:2px solid var(--accent-strong);}
   .header-actions{display:flex;gap:6px;flex-wrap:wrap}
   main{
     display:grid;
     grid-template-columns:minmax(320px,380px) minmax(0,1fr);
-    height:calc(100vh - 48px - env(safe-area-inset-bottom, 0px));
+    height:calc(100vh - 48px - 60px - env(safe-area-inset-bottom, 0px));
     overflow:hidden;
   }
   aside{
@@ -113,16 +111,20 @@
     color:#fff;
   }
 
-  .swatch-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+  /* 灰度色板 */
+  .swatch-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:2px}
   .swatch{
-    position:relative;aspect-ratio:1;border-radius:4px;
+    position:relative;aspect-ratio:1;border-radius:2px;
     border:2px solid transparent;cursor:pointer;overflow:hidden;
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.15);
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,0.5);
     transition:border-color 0.1s;
   }
   .swatch:hover{border-color:var(--muted)}
   .swatch.active{border-color:var(--focus)}
-  .swatch canvas{display:block;width:100%;height:100%}
+  .swatch span {
+    position:absolute;bottom:0;right:0;background:rgba(0,0,0,0.5);color:#fff;
+    font-size:8px;line-height:10px;padding:0 2px;
+  }
 
   .slider-row{
     display:grid;grid-template-columns:56px 1fr 48px;gap:6px;align-items:center;
@@ -152,6 +154,7 @@
     pointer-events:none;
   }
 
+  /* 文字预览框 */
   .text-preview-box{
     border:1px solid var(--line);
     border-radius:4px;
@@ -177,18 +180,18 @@
   @media (max-width:820px){
     body{
       height:auto;min-height:100vh;overflow:auto;
-      padding-bottom:calc(12px + env(safe-area-inset-bottom, 0px));
+      padding-bottom:calc(60px + env(safe-area-inset-bottom, 0px) + 12px);
     }
     main{grid-template-columns:1fr;height:auto;padding-bottom:0}
     aside{border-right:0;border-bottom:1px solid var(--line)}
-    .workspace{padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px))}
+    .workspace{padding-bottom:calc(16px + 60px + env(safe-area-inset-bottom, 0px))}
   }
 </style>
 </head>
 <body data-nav-page="edit" data-nav-layout="fixed">
 
 <header>
-  <h1><span class="brand"></span>E6 黑白 BIN 编辑器</h1>
+  <h1><span class="brand"></span>E6 BIN 编辑器 (16级灰度)</h1>
   <div class="header-actions">
     <button type="button" id="loadBtn">打开 BIN</button>
     <button type="button" id="saveBtn">保存 BIN</button>
@@ -219,19 +222,19 @@
       </div>
       <div class="slider-row">
         <span style="font-size:12px;color:var(--muted);font-weight:650">笔刷</span>
-        <input type="range" id="brushSize" min="2" max="32" step="2" value="4">
+        <input type="range" id="brushSize" min="1" max="32" step="1" value="4">
         <output id="brushSizeVal">4</output>
       </div>
     </fieldset>
 
     <fieldset>
-      <legend><h3>基础色</h3></legend>
-      <div class="swatch-grid" id="basicSwatches"></div>
-      <div class="info">黑白墨水屏仅支持黑、白两色。</div>
+      <legend><h3>灰度调色板</h3></legend>
+      <div class="swatch-grid" id="graySwatches"></div>
+      <div class="info">0 = 纯黑, 15 = 纯白。点击选取画笔颜色。</div>
     </fieldset>
 
     <fieldset>
-      <legend><h3>背景色</h3></legend>
+      <legend><h3>背景色（底灰）</h3></legend>
       <div class="swatch-grid" id="bgSwatches"></div>
       <div class="info">两层都透明的位置显示此颜色，导出时也会用它填充。</div>
     </fieldset>
@@ -355,24 +358,26 @@
 console.log('[E6 Editor] script start');
 
 const W = 800, H = 480;
-const FRAME_BYTES = W * H / 8;  // 48000 字节
+const FRAME_BYTES = W * H / 2; // 192000
 const TRANSPARENT = 255;
+const THUMB_W = 200, THUMB_H = 120;
+const THUMB_BYTES = (THUMB_W * THUMB_H) / 2; // 12000
 
-// 索引 0=黑，1=白
-const PALETTE = [
-  { id:'black',  hex:'#000000' },
-  { id:'white',  hex:'#FFFFFF' },
-];
+const PALETTE = [];
+for(let i=0; i<16; i++) {
+  const c = (i * 17).toString(16).padStart(2, '0');
+  PALETTE.push('#' + c + c + c);
+}
 
 let binLayer = new Uint8Array(W * H);
 let drawLayer = new Uint8Array(W * H);
 binLayer.fill(TRANSPARENT);
 drawLayer.fill(TRANSPARENT);
 
-let bgColorIdx = 1;
+let bgColorIdx = 15; // 默认白色
 let contentLocked = false;
 
-let currentColor = { index: 0 };
+let currentColor = 0;
 let currentTool = 'pencil';
 let brushSize = 4;
 let textModeActive = false;
@@ -425,44 +430,60 @@ function render() {
     let v = drawLayer[i];
     if (v === TRANSPARENT) v = binLayer[i];
     if (v === TRANSPARENT) v = bgColorIdx;
-    const hex = PALETTE[v].hex;
-    d[i*4]   = parseInt(hex.slice(1,3), 16);
-    d[i*4+1] = parseInt(hex.slice(3,5), 16);
-    d[i*4+2] = parseInt(hex.slice(5,7), 16);
+
+    // 灰度值转 RGB
+    const c = v * 17;
+
+    d[i*4]   = c;
+    d[i*4+1] = c;
+    d[i*4+2] = c;
     d[i*4+3] = 255;
   }
   ctxMain.putImageData(img, 0, 0);
 }
 
-/* 1bpp 解包 */
 function unpack(buf) {
   const out = new Uint8Array(W * H);
-  const rowBytes = W >> 3;
+  let k = 0;
   for (let y = 0; y < H; y++) {
-    const rowBase = y * rowBytes;
-    for (let x = 0; x < W; x++) {
-      const b = buf[rowBase + (x >> 3)];
-      const bit = (b >> (7 - (x & 7))) & 1;
-      out[y*W + x] = bit ? 0 : 1;  // 1表示黑，转成 0；0表示白，转成 1
+    for (let x = 0; x < W; x += 2) {
+      const b = buf[k++];
+      out[y*W + x]     = (b >> 4) & 0xF;
+      out[y*W + x + 1] = b & 0xF;
     }
   }
   return out;
 }
 
-/* 1bpp 打包 */
 function packLayers() {
   const buf = new Uint8Array(FRAME_BYTES);
-  const rowBytes = W >> 3;
+  let k = 0;
   for (let y = 0; y < H; y++) {
-    const rowBase = y * rowBytes;
-    for (let x = 0; x < W; x++) {
-      const idx = resolveIndex(x, y);
-      if (idx === 0) {  // 黑色
-        buf[rowBase + (x >> 3)] |= (0x80 >> (x & 7));
-      }
+    for (let x = 0; x < W; x += 2) {
+      const i0 = resolveIndex(x, y) & 0x0F;
+      const i1 = resolveIndex(x+1, y) & 0x0F;
+      buf[k++] = (i0 << 4) | i1;
     }
   }
   return buf;
+}
+
+function generateThumb(bin){
+  var tw = THUMB_W, th = THUMB_H;
+  var thumb = new Uint8Array(tw * th / 2);
+  for (var ty = 0; ty < th; ty++){
+    var sy = ty * 4;
+    var srcBase = sy * 400;
+    var dstBase = ty * 100;
+    for (var tx = 0; tx < tw; tx++){
+      var sx = tx * 4;
+      var b = bin[srcBase + (sx >> 1)];
+      var nib = (sx & 1) ? (b & 0xF) : ((b >> 4) & 0xF);
+      if (tx & 1) thumb[dstBase + (tx >> 1)] |= nib;
+      else        thumb[dstBase + (tx >> 1)]  = (nib << 4);
+    }
+  }
+  return thumb;
 }
 
 function getCanvasCoord(e) {
@@ -510,7 +531,7 @@ function paintPixelAt(x, y) {
     drawLayer[i] = TRANSPARENT;
     if (!contentLocked) binLayer[i] = TRANSPARENT;
   } else {
-    drawLayer[i] = currentColor.index;
+    drawLayer[i] = currentColor;
   }
 }
 
@@ -539,26 +560,25 @@ function drawLine(x0, y0, x1, y1) {
 }
 
 function pickColorAt(x, y) {
-  const R = 5;
-  let blackCount = 0, total = 0;
+  const R = 2;
+  const counts = new Array(16).fill(0);
+  let total = 0;
   for (let dy = -R; dy <= R; dy++) {
     for (let dx = -R; dx <= R; dx++) {
       const px = x + dx, py = y + dy;
       if (px < 0 || px >= W || py < 0 || py >= H) continue;
-      if (resolveIndex(px, py) === 0) blackCount++;
+      counts[resolveIndex(px, py)]++;
       total++;
     }
   }
   if (total === 0) return;
 
-  if (blackCount / total > 0.5) {
-    currentColor = { index: 0 };
-    setStatus('已取色：黑', 'ok');
-  } else {
-    currentColor = { index: 1 };
-    setStatus('已取色：白', 'ok');
-  }
+  const order = Array.from({length:16}, (_, i) => i).sort((a, b) => counts[b] - counts[a]);
+  const mainColor = order[0];
+
+  currentColor = mainColor;
   updateColorUI();
+  setStatus('已取色：灰度 ' + mainColor, 'ok');
 }
 
 function getTextMetrics() {
@@ -782,14 +802,19 @@ function drawTextToDrawLayer(x, y) {
   const off = document.createElement('canvas');
   off.width = W; off.height = H;
   const octx = off.getContext('2d');
+
+  // 用白色作为文字色，通过 alpha 通道混合
   drawTextOnCanvas(octx, x, y, m, '#fff');
 
   const img = octx.getImageData(0, 0, W, H);
   const d = img.data;
   let count = 0;
   for (let i = 0; i < W * H; i++) {
-    if (d[i*4 + 3] > 128) {
-      drawLayer[i] = currentColor.index;
+    const alpha = d[i*4 + 3];
+    if (alpha > 0) {
+      // 混合算法：如果背景是透明的，则直接使用当前画笔色 * alpha
+      // 否则，简化处理：只要有透明度，就直接涂上画笔色（不做复杂的图层混合）
+      drawLayer[i] = currentColor;
       count++;
     }
   }
@@ -804,48 +829,58 @@ function setStatus(text, cls) {
 }
 
 function buildSwatches() {
-  const basic = $('basicSwatches');
+  const basic = $('graySwatches');
   basic.innerHTML = '';
-  PALETTE.forEach((p, i) => {
+  for(let i=0; i<16; i++) {
     const el = document.createElement('div');
     el.className = 'swatch';
-    el.title = p.id;
-    el.style.background = p.hex;
-    el.dataset.kind = 'basic';
+    el.title = '灰度 ' + i;
+    el.style.background = PALETTE[i];
     el.dataset.index = String(i);
+
+    const label = document.createElement('span');
+    label.textContent = String(i);
+    el.appendChild(label);
+
     el.addEventListener('click', () => {
-      currentColor = { index:i };
+      currentColor = i;
       updateColorUI();
     });
     basic.appendChild(el);
-  });
+  }
 
   const bg = $('bgSwatches');
   bg.innerHTML = '';
-  PALETTE.forEach((p, i) => {
+  for(let i=0; i<16; i++) {
     const el = document.createElement('div');
     el.className = 'swatch';
-    el.title = '背景 ' + p.id;
-    el.style.background = p.hex;
+    el.title = '背景灰度 ' + i;
+    el.style.background = PALETTE[i];
     el.dataset.kind = 'bg';
     el.dataset.index = String(i);
+
+    const label = document.createElement('span');
+    label.textContent = String(i);
+    el.appendChild(label);
+
     el.addEventListener('click', () => {
       bgColorIdx = i;
       updateColorUI();
       render();
-      setStatus('背景色：' + p.id);
+      setStatus('背景色：灰度 ' + i);
     });
     bg.appendChild(el);
-  });
+  }
 }
 
 function updateColorUI() {
   document.querySelectorAll('.swatch').forEach(el => el.classList.remove('active'));
+
   document.querySelectorAll('.swatch[data-kind="bg"]').forEach(el => {
     if (parseInt(el.dataset.index) === bgColorIdx) el.classList.add('active');
   });
 
-  const el = document.querySelector('.swatch[data-kind="basic"][data-index="' + currentColor.index + '"]');
+  const el = document.querySelector('.swatch:not([data-kind="bg"])[data-index="' + currentColor + '"]');
   if (el) el.classList.add('active');
 }
 
@@ -872,7 +907,7 @@ async function displayToScreen() {
   const originalText = btn.textContent;
   btn.disabled = true;
   btn.textContent = '上传中…';
-  setStatus('正在上传到设备，屏幕刷新约需 2~5 秒…', 'busy');
+  setStatus('正在上传到设备，屏幕刷新约需 5~15 秒…', 'busy');
 
   try {
     const buf = packLayers();
@@ -918,6 +953,7 @@ function bindEvents() {
     );
   });
 
+  // ---- 文字相关：所有参数变化都刷新预览 ----
   $('textInput').addEventListener('input', () => {
     renderTextPreviewBox();
     if (textModeActive) ctxOverlay.clearRect(0, 0, W, H);
@@ -1015,7 +1051,7 @@ function bindEvents() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'image_bw_' + Date.now() + '.bin';
+      a.download = 'image_' + Date.now() + '.bin';
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
       setStatus('已保存 ' + buf.length + ' 字节', 'ok');

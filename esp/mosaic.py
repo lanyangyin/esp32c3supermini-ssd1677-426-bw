@@ -1,16 +1,29 @@
-# mosaic.py — 适配 SSD1677 网格拼图 (1bpp, 800x480)
+# mosaic.py — 网格拼图（多级灰度 800x480，4bpp）
+#
+# 用法（REPL）：
+#   from mosaic import compose_and_display, compose_to_file, compose_bytes
+#
+#   # 2×2 拼图
+#   grid = [
+#       ['/bgs/0.bin',  'solid:15'],          # 背景图 + 白
+#       ['solid:8', '/bins/0.bin'],           # 中灰 + BIN
+#   ]
+#   compose_and_display(grid)
 #
 # src 格式：
-#   '/path/to/N.bin'     文件源 (必须是 48000 字节的 1bpp 格式)
-#   'solid:0'            黑色
-#   'solid:1'            白色
-#   None 或 ''           白底
+#   '/path/to/N.bin'     文件源（800x480 4bpp 灰度）
+#   'solid:N'            纯色填充，N=0~15（0=黑，15=白）
+#   None 或 ''           默认为白（15）
+#
+# 每一格显示"源 bin 同位置"的图像；纯色则按该位置的灰度值填充。
+# 内存策略：逐行处理 + 句柄缓存，8×8=64 格时峰值 < 5KB。
+
+import gc
 
 W, H = 800, 480
-ROW_BYTES = W // 8  # 100 字节/行
-FRAME_BYTES = ROW_BYTES * H  # 48000 字节
+FRAME_BYTES = W * H // 2  # 192000
 MAX_CELLS = 64
-WHITE_IDX = 1
+WHITE_IDX = 15
 
 
 def _norm_grid(grid):
@@ -29,23 +42,22 @@ def _boundaries(total, n):
     return [round(i * total / n) for i in range(n + 1)]
 
 
-def _parse_color_src(src):
-    """返回 (kind, params) 或 None。
-    只要遇到 solid 或 pseudo，统一视为纯色处理。
+def _parse_src(src):
+    """返回 (kind, params)。
+    kind = 'solid'  → params = (idx,)
+    kind = 'empty'  → params = None
     """
     if not src or not isinstance(src, str):
-        return None
+        return ('empty', None)
     if src.startswith('solid:'):
         try:
             idx = int(src[6:])
-            return ('solid', (idx,))
+            if 0 <= idx <= 15:
+                return ('solid', (idx,))
         except Exception:
             pass
-        return None
-    if src.startswith('pseudo:'):
-        # 伪色全部视为白色 (或者你可以选择视为黑)
-        return ('solid', (1,))
-    return None
+        return ('empty', None)
+    return ('file', src)
 
 
 def _iter_rows(grid):
@@ -55,47 +67,38 @@ def _iter_rows(grid):
     col_x = _boundaries(W, cols)
     row_y = _boundaries(H, rows)
 
-    # 预解析每格
+    # 预解析每格：cell_specs = [(ry, cx, kind, params)]
     cell_specs = []
     handles = {}
     try:
         for ry in range(rows):
             for cx in range(cols):
                 src = grid[ry][cx]
-                if not src:
-                    cell_specs.append((ry, cx, 'empty', None))
-                    continue
-                parsed = _parse_color_src(src)
-                if parsed:
-                    cell_specs.append((ry, cx, parsed[0], parsed[1]))
-                else:
-                    # 文件源
+                kind, params = _parse_src(src)
+                if kind == 'file':
                     if src not in handles:
                         try:
                             handles[src] = open(src, 'rb')
-                            cell_specs.append((ry, cx, 'file', src))
                         except OSError as e:
                             print('[mosaic] open fail:', src, e)
-                            cell_specs.append((ry, cx, 'empty', None))
-                    else:
-                        cell_specs.append((ry, cx, 'file', src))
+                            kind = 'empty'
+                            params = None
+                cell_specs.append((ry, cx, kind, params))
 
-        # 每一行属于哪个 ry
+        # 每行属于哪个 ry
         row_of = [0] * H
         for ry in range(rows):
             for y in range(row_y[ry], row_y[ry + 1]):
                 if 0 <= y < H:
                     row_of[y] = ry
 
-        # 行级缓存，避免重复 seek
-        file_row_cache = {}
+        out_row = bytearray(W)
 
         for out_y in range(H):
             ry = row_of[out_y]
-            out_row = bytearray(ROW_BYTES)  # 默认全 0 (白底)
-
-            # 清理上一行的缓存
-            file_row_cache.clear()
+            # 先用白色填满整行
+            for x in range(W):
+                out_row[x] = WHITE_IDX
 
             for (c_ry, cx, kind, params) in cell_specs:
                 if c_ry != ry:
@@ -109,39 +112,42 @@ def _iter_rows(grid):
                     continue
                 elif kind == 'solid':
                     idx = params[0]
-                    if idx == 0:  # 如果是黑色
-                        # 把 x0 到 x1 的位全置 1
-                        start_byte = x0 >> 3
-                        end_byte = (x1 - 1) >> 3
-                        if start_byte == end_byte:
-                            mask = (0xFF >> (x0 & 7)) & (0xFF << (7 - ((x1 - 1) & 7)))
-                            out_row[start_byte] |= mask
-                        else:
-                            out_row[start_byte] |= (0xFF >> (x0 & 7))
-                            for b in range(start_byte + 1, end_byte):
-                                out_row[b] = 0xFF
-                            out_row[end_byte] |= (0xFF << (7 - ((x1 - 1) & 7)))
+                    for x in range(x0, x1):
+                        out_row[x] = idx
                 elif kind == 'file':
                     f = handles[params]
-                    if params not in file_row_cache:
-                        try:
-                            f.seek(out_y * ROW_BYTES)
-                            file_row_cache[params] = f.read(ROW_BYTES)
-                        except Exception:
-                            file_row_cache[params] = b'\x00' * ROW_BYTES
-
-                    src_row = file_row_cache[params]
-
-                    # 按位拷贝
+                    # 每个像素 4bit，800 像素 = 400 字节每行
+                    byte_start = x0 >> 1
+                    byte_end = (x1 + 1) >> 1
+                    byte_count = byte_end - byte_start
+                    if byte_count <= 0:
+                        continue
+                    try:
+                        f.seek(out_y * 400 + byte_start)
+                        line = f.read(byte_count)
+                    except Exception:
+                        continue
+                    n = len(line)
                     for x in range(x0, x1):
-                        src_byte_idx = x >> 3
-                        if src_byte_idx >= len(src_row):
-                            break
-                        # 如果源位是 1，则在新行置 1
-                        if (src_row[src_byte_idx] >> (7 - (x & 7))) & 1:
-                            out_row[x >> 3] |= (0x80 >> (x & 7))
+                        bi = (x >> 1) - byte_start
+                        if bi < 0 or bi >= n:
+                            continue
+                        bval = line[bi]
+                        # 提取 4bit 灰度值
+                        nib = (bval & 0xF) if (x & 1) else ((bval >> 4) & 0xF)
+                        out_row[x] = nib
 
-            yield bytes(out_row)
+            # 将 800 像素打包为 400 字节（4bpp）
+            packed = bytearray(400)
+            for i in range(0, W, 2):
+                hi = out_row[i] & 0x0F
+                lo = out_row[i + 1] & 0x0F
+                packed[i >> 1] = (hi << 4) | lo
+            yield bytes(packed)
+
+            if out_y % 40 == 0:
+                gc.collect()
+
     finally:
         for f in handles.values():
             try:
@@ -161,7 +167,7 @@ def compose_to_file(grid, path):
 
 
 def compose_bytes(grid):
-    """返回完整 bytes（48000）。"""
+    """返回完整 bytes（192000）。"""
     out = bytearray(FRAME_BYTES)
     pos = 0
     for row in _iter_rows(grid):
@@ -174,9 +180,13 @@ def compose_and_display(grid, epd=None):
     """流式显示到屏幕。"""
     if epd is None:
         import epd
-    epd.fill(1)  # 清屏（白）
-    pos = 0
-    for row in _iter_rows(grid):
-        epd.buffer[pos:pos + len(row)] = row
-        pos += len(row)
-    epd.show()
+
+    epd.init()
+
+    try:
+        for i, row in enumerate(_iter_rows(grid)):
+            start_idx = i * 400
+            epd._display.buffer[start_idx:start_idx + 400] = row
+    finally:
+        epd.show()
+        epd.sleep()

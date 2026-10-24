@@ -21,15 +21,28 @@ def save_config(cfg):
         json.dump(cfg, f)
 
 
-def start_ap(cfg=None):
+def start_ap(cfg=None, max_clients=4):
     if cfg is None:
         cfg = load_config()
     ap_cfg = cfg.get("ap", {})
     ap = network.WLAN(network.AP_IF)
+
     ap.active(True)
-    ap.config(essid=ap_cfg.get("essid", AP_SSID),
-              password=ap_cfg.get("password", AP_PASSWORD),
-              authmode=network.AUTH_WPA_WPA2_PSK)
+    try:
+        ap.config(
+            essid=ap_cfg.get("essid", AP_SSID),
+            password=ap_cfg.get("password", AP_PASSWORD),
+            authmode=network.AUTH_WPA_WPA2_PSK,
+            max_clients=max_clients,  # ★ 限制连接数，节省内存
+            channel=1  # ★ 固定信道
+        )
+    except Exception as e:
+        print(f"[AP] config 失败: {e}")
+        try:
+            ap.config(essid=ap_cfg.get("essid", AP_SSID), password=ap_cfg.get("password", AP_PASSWORD))
+        except:
+            pass
+
     try:
         ap.config(txpower=10)
     except:
@@ -55,7 +68,6 @@ def scan_networks():
 
 
 def _sta_cleanup(sta):
-    """强制把 STA 接口恢复到干净状态（未连接、非 connecting）"""
     try:
         if sta.isconnected():
             sta.disconnect()
@@ -65,7 +77,6 @@ def _sta_cleanup(sta):
                 time.sleep(0.1)
     except Exception:
         pass
-    # 即便 isconnected() 为 False，也可能残留 connecting 状态
     try:
         sta.disconnect()
     except Exception:
@@ -74,11 +85,6 @@ def _sta_cleanup(sta):
 
 
 def connect_sta(ssid, password, timeout=25, retries=3):
-    """
-    尝试连接 STA。
-    - timeout: 单次连接等待上限（秒），APSTA 共存下给足时间
-    - retries: 遇到 Internal State Error 或超时的重试次数
-    """
     sta = network.WLAN(network.STA_IF)
     if not sta.active():
         sta.active(True)
@@ -107,7 +113,6 @@ def connect_sta(ssid, password, timeout=25, retries=3):
             time.sleep(0.2)
 
         if sta.isconnected():
-            # 等 DHCP 分配 IP（防 0.0.0.0）
             start = time.time()
             while sta.ifconfig()[0] == '0.0.0.0':
                 if time.time() - start > 5:
@@ -123,10 +128,6 @@ def connect_sta(ssid, password, timeout=25, retries=3):
 
 
 def _scan_visible_ssids():
-    """
-    扫描当前可见的 SSID 集合。
-    返回 set 表示扫描成功，返回 None 表示扫描失败（调用方应退化为不筛选）。
-    """
     try:
         sta = network.WLAN(network.STA_IF)
         if not sta.active():
@@ -147,11 +148,6 @@ def _scan_visible_ssids():
 
 
 def auto_connect(force=False):
-    """
-    按优先级依次尝试连接已保存的网络。
-    - force=False（默认）：先扫描，只尝试扫描到的网络
-    - force=True：跳过扫描，盲试所有已保存网络（用于隐藏 SSID 等场景）
-    """
     cfg = load_config()
     networks = cfg.get("known_networks", [])
     networks.sort(key=lambda n: n.get("priority", 999))
@@ -165,7 +161,6 @@ def auto_connect(force=False):
     else:
         visible = _scan_visible_ssids()
         if visible is None:
-            # 扫描失败，退化为盲试
             print("[STA] 退化为逐个尝试")
             candidates = networks
         else:

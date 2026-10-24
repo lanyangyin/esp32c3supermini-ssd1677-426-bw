@@ -8,6 +8,7 @@
 :root{
   --bg:#f4f4f4;--card:#fff;--ink:#222;--muted:#888;--line:#e4e4e4;
   --accent:#06c;--ok:#0a7a0a;--err:#c00;--shadow:0 1px 3px rgba(0,0,0,.06);
+  --boot:#8a5cf6;
 }
 *{box-sizing:border-box}
 body{
@@ -87,6 +88,12 @@ button.btn{
 }
 button.btn:disabled{opacity:.4;cursor:not-allowed}
 
+.color-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.color-btn{
+  height:72px;border-radius:12px;border:2px solid rgba(0,0,0,.12);
+  color:#fff;font-weight:700;font-size:15px;cursor:pointer;
+}
+
 .status{
   padding:12px 14px;border-radius:10px;background:#f0f0f0;color:#333;
   font-size:13px;min-height:44px;line-height:1.5;word-break:break-word;
@@ -98,6 +105,18 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
 .hidden{display:none !important}
 @media (min-width:600px){.menu-grid{grid-template-columns:repeat(3,1fr)}}
 
+.boot-panel{
+  background:#f5f0ff;border:1px solid #ddd0ff;
+}
+.boot-info{
+  font-size:14px;font-weight:600;color:var(--boot);
+  padding:8px 10px;background:#fff;border-radius:8px;
+  border:1px solid #ddd0ff;
+  word-break:break-all;
+}
+.boot-info.empty{color:var(--muted);font-weight:400;font-style:italic}
+.boot-info b{color:var(--ink)}
+
 .bins-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 @media (min-width:720px){.bins-grid{grid-template-columns:repeat(3,1fr)}}
 @media (min-width:1000px){.bins-grid{grid-template-columns:repeat(4,1fr)}}
@@ -105,6 +124,10 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
   position:relative;background:#fff;border:1px solid var(--line);
   border-radius:10px;padding:4px;display:flex;flex-direction:column;
   gap:3px;box-shadow:var(--shadow);min-width:0;
+}
+.bin-cell.is-boot{
+  border-color:var(--boot);border-width:2px;padding:3px;
+  box-shadow:0 0 0 3px rgba(138,92,246,.15);
 }
 .bin-cell.add-cell{
   background:repeating-linear-gradient(45deg,#fafafa 0 6px,#f2f2f2 6px 12px);
@@ -116,12 +139,11 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
 .bin-cell.add-cell .plus-label{font-size:11px;color:var(--muted);margin-top:2px}
 .bin-cell canvas.bin-thumb{
   display:block;width:100%;aspect-ratio:5/3;
-  border-radius:6px;background:#fff;
+  border-radius:6px;background:#000;
   image-rendering:pixelated;cursor:zoom-in;
-  border:1px solid var(--line);
 }
 .bin-thumb.placeholder{
-  background:repeating-linear-gradient(45deg,#e0e0e0 0 8px,#f0f0f0 8px 16px);
+  background:repeating-linear-gradient(45deg,#1a1a1a 0 8px,#222 8px 16px);
 }
 .bin-label{
   font-size:11px;color:var(--muted);font-weight:600;
@@ -129,6 +151,11 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
   padding:0 2px;
 }
 .bin-label b{color:var(--ink);font-size:12px}
+.boot-badge{
+  display:inline-block;padding:0 5px;border-radius:8px;
+  font-size:9px;font-weight:700;line-height:14px;
+  background:var(--boot);color:#fff;margin-left:4px;
+}
 .storage-tag{
   display:inline-block;padding:0 5px;border-radius:8px;
   font-size:9px;font-weight:700;line-height:14px;
@@ -150,6 +177,13 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
   cursor:pointer;white-space:nowrap;
 }
 .bin-actions button.danger{color:var(--err);border-color:#f0c8c8}
+.bin-actions button.boot-btn{
+  color:var(--boot);border-color:#ddd0ff;background:#f5f0ff;
+}
+.bin-actions button.boot-btn:hover{background:#ece2ff}
+.bin-actions button.boot-active{
+  color:#fff;background:var(--boot);border-color:var(--boot);
+}
 
 .bins-empty{
   grid-column:1/-1;text-align:center;padding:32px 16px;
@@ -215,7 +249,7 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
     <a class="menu-card" href="/text">
       <div class="menu-icon">🅰️</div>
       <div class="menu-title">文字编辑</div>
-      <div class="menu-desc">排版 · 灰度</div>
+      <div class="menu-desc">ASCII · 逐字样式</div>
     </a>
     <a class="menu-card" href="/mosaic">
       <div class="menu-icon">🧩</div>
@@ -225,13 +259,34 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
     <button class="menu-card" data-page="upload">
       <div class="menu-icon">📤</div>
       <div class="menu-title">上传 BIN</div>
-      <div class="menu-desc">已转换的 48000 字节</div>
+      <div class="menu-desc">已转换的 image.bin</div>
+    </button>
+    <button class="menu-card" data-page="colors">
+      <div class="menu-icon">🎨</div>
+      <div class="menu-title">灰度测试</div>
+      <div class="menu-desc">全屏灰度阶梯显示</div>
     </button>
     <a class="menu-card" href="/wifi">
       <div class="menu-icon">📶</div>
       <div class="menu-title">网络设置</div>
       <div class="menu-desc">WiFi 扫描与配置</div>
     </a>
+  </div>
+
+  <div class="section-title">开机指定 BIN（模式 11）</div>
+  <div class="panel boot-panel">
+    <div class="boot-info empty" id="bootBinInfo">加载中…</div>
+    <div class="info" style="font-size:12px;color:var(--muted);line-height:1.5">
+      拨动 GPIO20+GPIO21 都为"连通"（模式 <b>11</b>）时，显示这个 BIN。<br>
+      未指定则使用 bins 里序号最大的一个。<br>
+      操作方法：点击下方任意 BIN 的 <b>开机</b> 按钮即可设为开机指定。
+    </div>
+    <div>
+      <button class="btn" id="bootBinClearBtn"
+              style="background:#888;padding:8px 14px;font-size:13px">
+        清除指定
+      </button>
+    </div>
   </div>
 
   <div class="section-title">已保存的 BIN（SD + Flash）</div>
@@ -241,8 +296,8 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
 
   <div class="section-title">系统</div>
   <div class="panel" style="gap:8px">
-    <div class="kv"><span>屏幕类型</span><span class="v">黑白 800×480</span></div>
-    <div class="kv"><span>帧数据</span><span class="v">48000 字节</span></div>
+    <div class="kv"><span>设备型号</span><span class="v">SSD1677 800×480 (16-Level Gray)</span></div>
+    <div class="kv"><span>帧数据</span><span class="v">192000 字节</span></div>
     <div class="kv"><span>网络</span><span class="v" id="netSummary">—</span></div>
     <div class="kv"><span>SD 卡剩余</span><span class="v" id="freeSd">—</span></div>
     <div class="kv"><span>Flash 剩余</span><span class="v" id="freeFlash">—</span></div>
@@ -252,7 +307,7 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
 <section id="page-upload" class="page hidden">
   <div class="panel">
     <div>
-      <label for="f">选择 1bpp BIN 文件 (48000字节)</label>
+      <label for="f">选择 image.bin 文件</label>
       <input type="file" id="f" accept=".bin">
     </div>
 
@@ -279,6 +334,23 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
   <div class="status" id="uploadStatus" style="margin-top:14px">就绪</div>
 </section>
 
+<section id="page-colors" class="page hidden">
+  <div class="panel">
+    <div style="font-size:13px;color:var(--muted)">
+      点击任意灰阶，屏幕将全屏刷新为对应灰度。每次约 5~15 秒，请稍候。
+    </div>
+    <div class="color-grid" style="grid-template-columns:repeat(2,1fr);">
+      <button class="color-btn" style="background:#000;color:#fff" data-url="/gray/0">0 (黑)</button>
+      <button class="color-btn" style="background:#222;color:#fff" data-url="/gray/2">2</button>
+      <button class="color-btn" style="background:#555;color:#fff" data-url="/gray/6">6</button>
+      <button class="color-btn" style="background:#888;color:#fff" data-url="/gray/8">8 (中灰)</button>
+      <button class="color-btn" style="background:#ccc;color:#000" data-url="/gray/12">12</button>
+      <button class="color-btn" style="background:#fff;color:#000" data-url="/gray/15">15 (白)</button>
+    </div>
+  </div>
+  <div class="status" id="colorStatus" style="margin-top:14px">就绪</div>
+</section>
+
 </main>
 
 <div class="loading-overlay" id="loadingOverlay">
@@ -290,45 +362,65 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
 (function(){
 'use strict';
 var $ = function(id){ return document.getElementById(id); };
-var PAGE_TITLES = { home:'E6 Panel', upload:'上传 BIN' };
+var PAGE_TITLES = { home:'E6 Panel', upload:'上传 BIN', colors:'灰度测试' };
 var busy = false;
 
-var FRAME_BYTES = 48000;  // 800x480 1bpp
-var THUMB_W = 400, THUMB_H = 240;
-var THUMB_BYTES = (THUMB_W * THUMB_H) / 8;  // 12000
-
+var FRAME_BYTES = 192000;
+var THUMB_W = 200, THUMB_H = 120;
+var THUMB_BYTES = (THUMB_W * THUMB_H) / 2;  // 12000
 var MAX_NOTE = 200;
 
 var currentBins = null;
 var pendingUploadTarget = null;
 var currentUploadTarget = { mode: 'new', storage: 'flash' };
+var currentBootBin = { storage: null, index: null };
 
 function storageLabel(s){ return s === 'sd' ? 'SD' : 'Flash'; }
 function storageTag(s){
   return '<span class="storage-tag ' + s + '">' + storageLabel(s) + '</span>';
 }
 
-/* ★ 1bpp 缩略图绘制 */
-function render1bppToCanvas(bin, canvas, w, h){
+/* ★ 生成缩略图：192000 → 12000 (800x480 4bpp -> 200x120 4bpp) */
+function generateThumb(bin){
+  var tw = THUMB_W, th = THUMB_H;
+  var thumb = new Uint8Array(tw * th / 2);
+  for (var ty = 0; ty < th; ty++){
+    var sy = ty * 4;
+    var srcBase = sy * 400;
+    var dstBase = ty * 100;
+    for (var tx = 0; tx < tw; tx++){
+      var sx = tx * 4;
+      var b = bin[srcBase + (sx >> 1)];
+      var nib = (sx & 1) ? (b & 0xF) : ((b >> 4) & 0xF);
+      if (tx & 1) thumb[dstBase + (tx >> 1)] |= nib;
+      else        thumb[dstBase + (tx >> 1)]  = (nib << 4);
+    }
+  }
+  return thumb;
+}
+
+function render4bppToCanvas(bin, canvas, w, h){
   canvas.width = w;
   canvas.height = h;
   var ctx = canvas.getContext('2d');
   var img = ctx.createImageData(w, h);
   var d = img.data;
-  var rowBytes = w >> 3;
-
+  var rowBytes = w >> 1;
   for (var y = 0; y < h; y++){
     var rowBase = y * rowBytes;
-    for (var x = 0; x < w; x++){
-      var b = bin[rowBase + (x >> 3)];
-      // 1 表示黑，0 表示白
-      var bit = (b >> (7 - (x & 7))) & 1;
-      var pi = y * w + x;
-      var color = bit ? 0 : 255;
-      d[pi*4] = color;
-      d[pi*4+1] = color;
-      d[pi*4+2] = color;
-      d[pi*4+3] = 255;
+    var pixBase = y * w * 4;
+    for (var xb = 0; xb < rowBytes; xb++){
+      var b = bin[rowBase + xb];
+      var hi = (b >> 4) & 0xF;
+      var lo = b & 0xF;
+
+      var c0 = hi * 17;
+      var c1 = lo * 17;
+
+      var o0 = pixBase + xb * 8;
+      var o1 = o0 + 4;
+      d[o0]=c0; d[o0+1]=c0; d[o0+2]=c0; d[o0+3]=255;
+      d[o1]=c1; d[o1+1]=c1; d[o1+2]=c1; d[o1+3]=255;
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -380,10 +472,64 @@ async function loadThumb(slot, storage, canvas){
     if (!r.ok) return;
     var buf = new Uint8Array(await r.arrayBuffer());
     if (buf.length !== THUMB_BYTES) return;
-    render1bppToCanvas(buf, canvas, THUMB_W, THUMB_H);
+    render4bppToCanvas(buf, canvas, THUMB_W, THUMB_H);
     canvas.classList.remove('placeholder');
   } catch(e){
     console.warn('thumb load fail', slot, e);
+  }
+}
+
+/* ===== 开机指定 BIN ===== */
+
+async function loadBootBin(){
+  var el = $('bootBinInfo');
+  try {
+    var r = await fetch('/boot/bin', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var data = await r.json();
+    if (data.defined && data.storage && typeof data.index === 'number'){
+      currentBootBin = { storage: data.storage, index: data.index };
+      el.classList.remove('empty');
+      el.innerHTML = '★ 当前指定：<b>' + storageLabel(data.storage) +
+        ' 槽位 ' + (data.index + 1) + '</b>';
+    } else {
+      currentBootBin = { storage: null, index: null };
+      el.classList.add('empty');
+      el.textContent = '未指定（模式 11 将显示 bins 里序号最大的一个）';
+    }
+  } catch(e){
+    el.classList.add('empty');
+    el.textContent = '读取失败：' + e.message;
+  }
+}
+
+async function setBootBin(storage, index){
+  try {
+    var r = await fetch('/boot/bin', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ storage: storage, index: index })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    await loadBootBin();
+    renderBinsGrid(currentBins);
+  } catch(e){
+    alert('设置失败：' + e.message);
+  }
+}
+
+async function clearBootBin(){
+  try {
+    var r = await fetch('/boot/bin', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({})
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    await loadBootBin();
+    renderBinsGrid(currentBins);
+  } catch(e){
+    alert('清除失败：' + e.message);
   }
 }
 
@@ -409,6 +555,11 @@ async function fetchBins(){
   }
 }
 
+function isBootSlot(storage, index){
+  return currentBootBin.storage === storage &&
+         currentBootBin.index === index;
+}
+
 function renderBinsGrid(data){
   var grid = $('binsGrid');
   grid.innerHTML = '';
@@ -431,13 +582,15 @@ function renderBinsGrid(data){
     grid.appendChild(empty);
   } else {
     slots.forEach(function(slot){
+      var isBoot = isBootSlot(slot.storage, slot.index);
       var cell = document.createElement('div');
-      cell.className = 'bin-cell';
+      cell.className = 'bin-cell' + (isBoot ? ' is-boot' : '');
 
       var label = document.createElement('div');
       label.className = 'bin-label';
       label.innerHTML = '<b>' + storageLabel(slot.storage) + ' 槽位 ' +
-        (slot.index + 1) + '</b>' + storageTag(slot.storage);
+        (slot.index + 1) + '</b>' + storageTag(slot.storage) +
+        (isBoot ? '<span class="boot-badge">★ 开机</span>' : '');
       cell.appendChild(label);
 
       var cvs = document.createElement('canvas');
@@ -462,6 +615,16 @@ function renderBinsGrid(data){
       bShow.textContent = '显示';
       bShow.onclick = function(){ displaySlot(slot.index, slot.storage); };
       actions.appendChild(bShow);
+
+      var bBoot = document.createElement('button');
+      bBoot.textContent = isBoot ? '取消开机' : '开机';
+      bBoot.title = isBoot ? '取消开机指定' : '设为开机指定';
+      bBoot.className = 'boot-btn' + (isBoot ? ' boot-active' : '');
+      bBoot.onclick = function(){
+        if (isBoot) clearBootBin();
+        else setBootBin(slot.storage, slot.index);
+      };
+      actions.appendChild(bBoot);
 
       var bNote = document.createElement('button');
       bNote.textContent = '备注';
@@ -543,6 +706,7 @@ async function deleteSlot(idx, storage){
   try {
     var r = await fetch('/bins/delete/' + idx + '?storage=' + storage, {method:'POST'});
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (isBootSlot(storage, idx)) clearBootBin();
     if (currentBins && currentBins.slots){
       currentBins.slots = currentBins.slots.filter(function(s){
         return !(s.index === idx && s.storage === storage);
@@ -573,6 +737,7 @@ async function transferSlot(slot){
   showLoading('正在转移 ' + srcLabel + ' → ' + targetLabel + '…');
 
   try {
+    // 读源 bin
     var srcUrl = '/bins/get/' + slot.index + '?storage=' + slot.storage;
     var srcResp = await fetch(srcUrl, {cache:'no-store'});
     if (!srcResp.ok) throw new Error('读取源文件失败：HTTP ' + srcResp.status);
@@ -586,6 +751,7 @@ async function transferSlot(slot){
       });
     }
 
+    // 上传到目标
     var upUrl = '/bins/upload/' + targetIdx + '?storage=' + targetStorage;
     var note = slot.note || '';
     if (note) upUrl += '&note=' + encodeURIComponent(note);
@@ -597,8 +763,23 @@ async function transferSlot(slot){
     });
     if (!upResp.ok) throw new Error('上传到目标失败：HTTP ' + upResp.status);
 
+    // ★ 同时把 thumb 一并转移
+    var thumbBuf = generateThumb(new Uint8Array(buf));
+    try {
+      await fetch('/bins/thumb_upload/' + targetIdx + '?storage=' + targetStorage, {
+        method: 'POST',
+        headers: {'Content-Type':'application/octet-stream'},
+        body: thumbBuf
+      });
+    } catch(_) { /* thumb 失败可忽略 */ }
+
+    // 删除源
     var delResp = await fetch('/bins/delete/' + slot.index + '?storage=' + slot.storage, {method:'POST'});
     if (!delResp.ok) throw new Error('删除源槽位失败：HTTP ' + delResp.status);
+
+    if (isBootSlot(slot.storage, slot.index)){
+      await setBootBin(targetStorage, targetIdx);
+    }
 
     await refreshBinsGrid();
     alert('已转移：' + srcLabel + ' 槽位 ' + (slot.index + 1) +
@@ -651,7 +832,7 @@ function showOverlay(slot, thumbCanvas){
   cvs.height = 480;
   cvs.style.cssText =
     'max-width:100%;max-height:80vh;width:auto;height:auto;' +
-    'image-rendering:pixelated;border-radius:8px;background:#fff';
+    'image-rendering:pixelated;border-radius:8px;background:#000';
   cvs.getContext('2d').drawImage(thumbCanvas, 0, 0, 800, 480);
   mask.appendChild(cvs);
   var label = document.createElement('div');
@@ -660,7 +841,8 @@ function showOverlay(slot, thumbCanvas){
     'padding:8px 14px;background:rgba(255,255,255,.12);border-radius:6px;';
   var note = (slot.note || '').trim();
   var prefix = storageLabel(slot.storage) + ' 槽位 ' + (slot.index+1);
-  label.textContent = (note ? (prefix + '：' + note) : prefix);
+  var bootTag = isBootSlot(slot.storage, slot.index) ? '  ★ 开机指定' : '';
+  label.textContent = (note ? (prefix + '：' + note) : prefix) + bootTag;
   mask.appendChild(label);
   mask.addEventListener('click', function(e){
     if (e.target === mask) mask.remove();
@@ -815,13 +997,14 @@ async function doUpload(display){
   $('uploadOnlyBtn').disabled = true;
   setStatus($('uploadStatus'),
     (display ? '正在上传并显示到 ' : '正在上传到 ') + storageLabel(storage) + ' 槽位 ' + (targetSlot+1) +
-    '，约 ' + (display ? '10~30' : '5~10') + ' 秒…', 'busy');
+    '，约 ' + (display ? '20~40' : '10~20') + ' 秒…', 'busy');
 
   try {
     var endpoint = display ? '/bins/upload_and_display/' : '/bins/upload/';
     var url = endpoint + targetSlot + '?storage=' + storage;
     if (note) url += '&note=' + encodeURIComponent(note);
 
+    // 1. 传 bin
     var r = await fetch(url, {
       method: 'POST',
       headers: {'Content-Type':'application/octet-stream'},
@@ -830,11 +1013,24 @@ async function doUpload(display){
     var resp = await r.text();
     if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + resp);
 
+    // 2. 传 thumb（浏览器生成，失败不阻塞）
+    try {
+      var thumbBuf = generateThumb(new Uint8Array(buf));
+      await fetch('/bins/thumb_upload/' + targetSlot + '?storage=' + storage, {
+        method: 'POST',
+        headers: {'Content-Type':'application/octet-stream'},
+        body: thumbBuf
+      });
+    } catch(te){
+      console.warn('thumb upload fail', te);
+    }
+
+    // 3. 更新本地列表
     if (currentBins && currentBins.slots){
       if (isNew){
         currentBins.slots.push({
           index: targetSlot, exists: true, storage: storage,
-          size: FRAME_BYTES, note: note, has_thumb: false
+          size: FRAME_BYTES, note: note, has_thumb: true
         });
         currentBins.slots.sort(function(a,b){
           if (a.storage !== b.storage) return a.storage === 'sd' ? -1 : 1;
@@ -846,7 +1042,7 @@ async function doUpload(display){
           if (s.index === targetSlot && s.storage === storage){
             s.exists = true;
             s.size = FRAME_BYTES;
-            s.has_thumb = false;
+            s.has_thumb = true;
             if (note) s.note = note;
             break;
           }
@@ -902,6 +1098,7 @@ window.addEventListener('hashchange', function(){
   switchPage(name);
   if (name === 'home'){
     refreshBinsGrid();
+    loadBootBin();
   } else if (name === 'upload'){
     refreshUploadTargets();
   }
@@ -937,6 +1134,28 @@ async function refreshStatus(){
 $('f').addEventListener('change', updateUploadButton);
 $('uploadBtn').addEventListener('click', function(){ doUpload(true); });
 $('uploadOnlyBtn').addEventListener('click', function(){ doUpload(false); });
+$('bootBinClearBtn').addEventListener('click', clearBootBin);
+
+document.querySelectorAll('.color-btn[data-url]').forEach(function(btn){
+  btn.addEventListener('click', async function(){
+    if(busy) return;
+    var st = $('colorStatus');
+    var name = btn.textContent.trim();
+    busy = true;
+    document.querySelectorAll('.color-btn').forEach(function(b){ b.disabled = true; });
+    setStatus(st, '正在执行「' + name + '」…', 'busy');
+    try{
+      var r = await fetch(btn.dataset.url);
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      setStatus(st, '「' + name + '」完成', 'ok');
+    }catch(e){
+      setStatus(st, '「' + name + '」失败：' + e.message, 'err');
+    }finally{
+      busy = false;
+      document.querySelectorAll('.color-btn').forEach(function(b){ b.disabled = false; });
+    }
+  });
+});
 
 function setStatus(el, text, cls){
   el.textContent = text;
@@ -947,6 +1166,7 @@ switchPage(location.hash.slice(1) || 'home');
 refreshStatus();
 setInterval(refreshStatus, 15000);
 refreshBinsGrid();
+loadBootBin();
 refreshUploadTargets();
 
 })();

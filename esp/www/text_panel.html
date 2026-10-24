@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>黑白文本编辑 - E6</title>
+<title>ASCII 文本编辑 (16级灰度)</title>
 <style>
   :root{
     color-scheme:dark;
@@ -16,35 +16,73 @@
   }
   *{box-sizing:border-box}
   body{
-    margin:0;min-height:100vh;background:#151512;color:var(--ink);
+    margin:0;height:100vh;overflow:hidden;background:#151512;color:var(--ink);
     font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;
-    padding-bottom:calc(60px + env(safe-area-inset-bottom,0px));
   }
-  header{
-    padding:10px 14px;border-bottom:1px solid var(--line);background:#1b1a17;
-    display:flex;align-items:center;justify-content:space-between;min-height:48px;
-    position:sticky;top:0;z-index:10;
+
+  /* 左右分栏布局 */
+  main{
+    display:grid;
+    grid-template-columns: 400px 1fr;
+    height: calc(100vh - 60px - env(safe-area-inset-bottom, 0px));
+    overflow:hidden;
   }
-  header h1{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
-  header .brand{display:inline-block;width:10px;height:14px;border:2px solid var(--accent-strong)}
-  main{max-width:920px;margin:0 auto;padding:12px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  @media (max-width:760px){.grid{grid-template-columns:1fr}}
+
+  /* 左侧控制面板 */
+  aside{
+    border-right: 1px solid var(--line);
+    background: var(--panel);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* 右侧画布区 */
+  .canvas-workspace{
+    background: #0a0a08;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 20px;
+    position: relative;
+  }
+  .canvas-frame {
+    max-width: 100%;
+    max-height: 100%;
+    background: #000;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    overflow: hidden;
+    display: flex;
+  }
+  #previewCanvas{
+    display:block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    image-rendering:pixelated;
+  }
+
   fieldset{
-    border:1px solid var(--line);border-radius:6px;margin:0;padding:10px;
-    background:var(--panel);min-width:0;
+    border:1px solid var(--line);border-radius:6px;margin:0;padding:12px;
+    background:var(--panel-deep);
   }
   legend{
     padding:0 6px;margin:0 0 0 -2px;font-size:11px;color:var(--subtle);
     text-transform:uppercase;letter-spacing:.08em;font-weight:760;
   }
-  label{display:grid;gap:3px;color:var(--muted);font-size:11px;font-weight:650;min-width:0}
+  label{display:grid;gap:4px;color:var(--muted);font-size:11px;font-weight:650;min-width:0;margin-bottom:6px}
   select,input[type=text],input[type=number],textarea{
     width:100%;min-height:28px;padding:4px 6px;
     border:1px solid var(--line);border-radius:4px;
-    background:var(--panel-deep);color:var(--ink);font:inherit;font-size:12px;
+    background:var(--panel);color:var(--ink);font:inherit;font-size:12px;
   }
-  textarea{min-height:72px;resize:vertical;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace}
+  textarea{min-height:60px;resize:vertical;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace}
   button{
     padding:8px 12px;border:1px solid var(--line-strong);border-radius:4px;
     background:var(--paper-raised);color:var(--ink);font:inherit;font-size:12px;
@@ -54,27 +92,54 @@
   button:disabled{opacity:.5;cursor:not-allowed}
   button.primary{background:var(--accent-strong);color:#1a1a1a;border-color:var(--accent-strong)}
   button.primary:hover:not(:disabled){background:#fff}
-  .btn-row{display:flex;gap:6px}
+
+  .btn-row{display:flex;gap:6px;margin-top:6px}
   .btn-row button{flex:1}
   .info{font-size:11px;color:var(--subtle);line-height:1.4;margin-top:4px}
-  .status{
-    padding:8px 10px;border-radius:4px;font-size:12px;background:#1a1a17;
-    color:var(--muted);white-space:pre-wrap;margin-top:10px;
-  }
-  .status.ok{color:#7dda7d;background:#132013}
-  .status.err{color:var(--danger);background:#2a1414}
-  .status.busy{color:#7db8da;background:#132033}
 
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .row-4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px}
+
+  /* 颜色选择区 */
+  .color-mode{display:flex;gap:3px;margin-bottom:6px}
+  .color-mode button{
+    flex:1;padding:6px 4px;font-size:11px;font-weight:600;
+    background:var(--paper-raised);color:var(--muted);border:1px solid var(--line);
+  }
+  .color-mode button.active{
+    background:var(--accent-strong);color:#1a1a1a;border-color:var(--accent-strong);
+  }
+  .color-mode button.clear-outline.active{
+    background:#ffb4a8;color:#6a2a2a;border-color:#ffb4a8;
+  }
+
+  .color-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;}
+  .color-cell{
+    position:relative;border-radius:3px;border:1px solid transparent;
+    cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;
+    height: 24px;
+  }
+  .color-cell:hover{border-color:var(--muted)}
+  .color-cell.active{border-color:var(--focus);border-width:2px}
+  .color-cell .swatch{position:absolute;inset:0;}
+  .color-cell .label{
+    position:relative;z-index:1;font-size:10px;color:#fff;
+    text-shadow:0 0 2px #000,0 0 2px #000;font-weight:700;
+    pointer-events:none;text-align:center;line-height:1;
+  }
+
+  /* 字符多选区 */
   .chars-strip{
     display:flex;flex-wrap:wrap;gap:3px;padding:6px;
-    background:var(--panel-deep);border:1px solid var(--line);border-radius:4px;
-    max-height:150px;overflow-y:auto;scrollbar-width:thin;
+    background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    max-height:120px;overflow-y:auto;scrollbar-width:thin;
     user-select:none;
   }
   .chars-strip::-webkit-scrollbar{width:6px}
   .chars-strip::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px}
   .char-tile{
-    width:30px;height:30px;border-radius:3px;border:1px solid var(--line-strong);
+    width:28px;height:28px;border-radius:3px;border:1px solid var(--line-strong);
     background:var(--paper-raised);color:var(--ink);font-family:monospace;font-size:13px;
     cursor:pointer;display:grid;place-items:center;position:relative;
     transition:border-color .1s;user-select:none;
@@ -95,353 +160,248 @@
   .char-tile.newline{
     background:transparent;border-style:dashed;color:var(--subtle);font-size:11px;
   }
-
-  .sel-info{
-    margin-top:6px;font-size:11px;color:var(--focus);
-    line-height:1.4;font-weight:600;
+  .char-tile .color-dot{
+    position:absolute;right:2px;top:2px;
+    width:6px;height:6px;border-radius:50%;
+    box-shadow:0 0 0 1px rgba(0,0,0,.45);
   }
 
+  .sel-info{font-size:11px;color:var(--focus);line-height:1.4;font-weight:600;margin-bottom:6px;}
   .sel-range-row{
-    display:flex;gap:6px;align-items:center;margin-top:8px;
-    padding:6px 8px;background:var(--panel-deep);
-    border:1px solid var(--line);border-radius:4px;
+    display:flex;gap:6px;align-items:center;margin-bottom:6px;
+    padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:4px;
   }
   .sel-range-row label{
-    display:flex;align-items:center;gap:4px;
-    color:var(--muted);font-size:11px;font-weight:650;flex:1;
-    min-width:0;
+    display:flex;align-items:center;gap:4px;margin:0;color:var(--muted);font-size:11px;font-weight:650;flex:1;min-width:0;
   }
   .sel-range-row input{
-    flex:1;min-height:26px;padding:3px 5px;
-    border:1px solid var(--line);border-radius:3px;
-    background:var(--panel);color:var(--ink);font:inherit;font-size:12px;
-    min-width:0;
+    flex:1;min-height:24px;padding:2px 4px;border:1px solid var(--line);border-radius:3px;
+    background:var(--panel-deep);color:var(--ink);font:inherit;font-size:12px;min-width:0;
   }
-  .sel-range-row button{
-    padding:5px 10px;font-size:11px;flex-shrink:0;
-  }
+  .sel-range-row button{padding:4px 8px;font-size:11px;flex-shrink:0;}
 
-  .style-checks{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .style-checks{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px;}
   .style-checks label{
     display:flex;align-items:center;justify-content:center;gap:4px;
     padding:6px 4px;background:var(--paper-raised);border:1px solid var(--line);
-    border-radius:4px;cursor:pointer;font-size:11px;font-weight:650;color:var(--ink);
+    border-radius:4px;cursor:pointer;font-size:11px;font-weight:650;color:var(--ink);margin:0;
   }
   .style-checks label:has(input:checked){
-    border-color:var(--focus);
-    background:color-mix(in srgb,var(--focus) 20%,var(--paper-raised));
+    border-color:var(--focus);background:color-mix(in srgb,var(--focus) 20%,var(--paper-raised));
   }
   .style-checks input{margin:0}
 
-  .preview-box{
-    display:grid;place-items:center;background:#fff;
-    border:1px solid var(--line);border-radius:4px;padding:6px;min-height:160px;
-  }
-  #previewCanvas{
-    display:block;max-width:100%;height:auto;image-rendering:pixelated;border-radius:2px;
-  }
-  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-  .row-4{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
-
-  .char-font-box{
-    margin-top:8px;padding:8px;
-    border:1px solid var(--line);border-radius:4px;
-    background:var(--panel-deep);display:none;
-  }
-  .char-font-box.show{display:block}
-
-  .bgs-grid{
-    display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
-  }
-  @media (max-width:600px){.bgs-grid{grid-template-columns:repeat(3,1fr)}}
-  .bg-cell{
-    position:relative;background:var(--paper-raised);border:1px solid var(--line);
-    border-radius:6px;padding:4px;display:flex;flex-direction:column;gap:3px;
-    cursor:pointer;min-height:60px;
-  }
-  .bg-cell.active{border-color:var(--focus);border-width:2px;padding:3px}
-  .bg-cell.empty{
-    background:repeating-linear-gradient(45deg,#1a1a17 0 4px,#222 4px 8px);
-    border-style:dashed;justify-content:center;align-items:center;
-  }
-  .bg-cell canvas.bg-thumb{
-    display:block;width:100%;aspect-ratio:5/3;border-radius:3px;background:#fff;
-    image-rendering:pixelated;
-  }
-  .bg-cell canvas.bg-thumb.placeholder{
-    background:repeating-linear-gradient(45deg,#e0e0e0 0 8px,#f0f0f0 8px 16px);
-  }
-  .bg-cell .bg-label{
-    font-size:10px;color:var(--muted);text-align:center;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  }
-  .bg-cell .bg-note{
-    font-size:9px;color:var(--ink);text-align:center;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  }
-  .bg-cell .bg-actions{display:flex;gap:2px;margin-top:2px}
-  .bg-cell .bg-actions button{
-    flex:1;padding:3px 2px;font-size:9px;border-radius:3px;
-    border:1px solid var(--line);background:var(--paper-raised);color:var(--ink);
-    cursor:pointer;
-  }
-  .bg-cell .bg-actions button.danger{color:var(--danger);border-color:#6a2a2a}
-  .bg-cell.none{background:var(--paper);border-style:solid}
-  .bg-cell.none.active{border-color:var(--focus);border-width:2px;padding:3px}
-  .bg-cell.none .bg-label{padding:22px 4px;font-size:11px;color:var(--ink)}
-
   .line-settings {
     display: flex; flex-direction: column; gap: 4px;
-    margin-top: 8px; max-height: 280px; overflow-y: auto;
-    scrollbar-width: thin;
+    max-height: 150px; overflow-y: auto; scrollbar-width: thin;
+    margin-top: 6px;
   }
-  .line-settings::-webkit-scrollbar{width:6px}
-  .line-settings::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px}
   .line-setting-row {
-    display: grid;
-    grid-template-columns: 46px minmax(0, 1fr) 72px 20px;
-    gap: 6px; align-items: center;
-    padding: 4px 8px;
-    background: var(--panel-deep);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    font-size: 11px;
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) 60px 16px; gap: 4px; align-items: center;
+    padding: 3px 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; font-size: 11px;
   }
-  .line-setting-row .line-idx {
-    color: var(--muted); font-weight: 650; text-align: right;
-    white-space: nowrap;
-  }
-  .line-setting-row .line-preview {
-    color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  }
+  .line-setting-row .line-idx { color: var(--muted); font-weight: 650; text-align: right; }
+  .line-setting-row .line-preview { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: monospace; }
   .line-setting-row .line-preview.empty { color: var(--subtle); font-style: italic; }
   .line-setting-row input {
-    width: 100%; min-height: 24px; padding: 2px 6px;
-    border: 1px solid var(--line); border-radius: 3px;
-    background: var(--panel); color: var(--ink); font: inherit; font-size: 11px;
-    text-align: right;
+    width: 100%; min-height: 22px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 3px;
+    background: var(--panel-deep); color: var(--ink); font: inherit; font-size: 11px; text-align: right;
   }
   .line-setting-row .unit { color: var(--subtle); }
-  .line-settings-empty {
-    padding: 10px 8px; text-align: center;
-    color: var(--subtle); font-size: 11px;
-  }
 
+  /* 遮罩层 */
   .font-loading-overlay{
-    position:fixed;inset:0;
-    background:rgba(0,0,0,.72);
-    z-index:1500;
-    display:flex;align-items:center;justify-content:center;
-    opacity:0;visibility:hidden;
-    transition:opacity .2s ease, visibility .2s ease;
-    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
-    padding:16px;
+    position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1500;
+    display:flex;align-items:center;justify-content:center;opacity:0;visibility:hidden;
+    transition:opacity .2s ease, visibility .2s ease;padding:16px;
   }
   .font-loading-overlay.show{ opacity:1;visibility:visible; }
   .font-loading-card{
-    background:var(--panel);
-    border:1px solid var(--line-strong);
-    border-radius:10px;
-    padding:20px 22px;
-    min-width:320px;max-width:90%;
-    box-shadow:0 8px 32px rgba(0,0,0,.6);
+    background:var(--panel);border:1px solid var(--line-strong);border-radius:10px;
+    padding:20px 22px;min-width:320px;max-width:90%;box-shadow:0 8px 32px rgba(0,0,0,.6);
   }
-  .font-loading-title{
-    font-size:14px;font-weight:700;color:var(--ink);
-    margin:0 0 4px 0;line-height:1.3;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  }
-  .font-loading-sub{
-    font-size:12px;color:var(--muted);margin:0 0 14px 0;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  }
-  .font-loading-bar{
-    height:8px;background:#10100e;border-radius:4px;overflow:hidden;
-    margin-bottom:8px;
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);
-  }
-  .font-loading-bar span{
-    display:block;height:100%;width:0;
-    background:linear-gradient(90deg, var(--focus), #a8e6df);
-    border-radius:4px;
-    transition:width .12s ease;
-  }
+  .font-loading-title{font-size:14px;font-weight:700;color:var(--ink);margin:0 0 4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .font-loading-sub{font-size:12px;color:var(--muted);margin:0 0 14px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .font-loading-bar{height:8px;background:#10100e;border-radius:4px;overflow:hidden;margin-bottom:8px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);}
+  .font-loading-bar span{display:block;height:100%;width:0;background:linear-gradient(90deg, var(--focus), #a8e6df);border-radius:4px;transition:width .12s ease;}
   .font-loading-bar.done span{ background:linear-gradient(90deg, #7dda7d, #b8f0b8); }
   .font-loading-bar.err span{ background:linear-gradient(90deg, var(--danger), #ffb4a8); }
-  .font-loading-stats{
-    display:flex;justify-content:space-between;align-items:baseline;
-    font-size:11px;color:var(--muted);
-    font-variant-numeric:tabular-nums;
-    gap:8px;
-  }
-  .font-loading-stats span{
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  .font-loading-stats{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;gap:8px;}
+  .font-loading-stats span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  @media (max-width: 820px){
+    main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; overflow: auto; height: auto; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; padding-bottom: 60px; }
+    .canvas-workspace { min-height: 400px; padding: 10px; }
   }
 </style>
 </head>
 <body data-nav-layout="scroll">
 
-<header>
-  <h1><span class="brand"></span>黑白文本编辑</h1>
+<header style="padding:10px 14px;border-bottom:1px solid var(--line);background:#1b1a17;min-height:48px;display:flex;align-items:center;">
+  <h1 style="margin:0;font-size:15px;display:flex;align-items:center;gap:8px;">
+    <span style="display:inline-block;width:10px;height:14px;border:2px solid var(--accent-strong)"></span>
+    ASCII 文本编辑 (16级灰度)
+  </h1>
 </header>
 
 <main>
-<div class="grid">
+  <!-- 左侧控制面板 -->
+  <aside>
+    <fieldset>
+      <legend>内容</legend>
+      <textarea id="textInput" placeholder="输入文本">Hello E6! &#10;16 Levels of Gray.</textarea>
+      <div class="info" style="margin-bottom:6px"><span id="charCount">0</span> 字符</div>
 
-  <fieldset>
-    <legend>内容</legend>
-    <textarea id="textInput" placeholder="输入文本">Hello E6!</textarea>
-    <div class="info"><span id="charCount">0</span> 字符</div>
-
-    <label>旋转方向
-      <select id="directionSelect">
-        <option value="0">0° 横向</option>
-        <option value="90">90° 顺时针</option>
-        <option value="180">180° 倒立</option>
-        <option value="270">270° 逆时针</option>
-      </select>
-    </label>
-
-    <label>字体
-      <div style="display:flex;gap:6px;align-items:center;">
-        <select id="fontFamilySelect" style="flex:1;"></select>
-        <button type="button" id="rebuildFontsBtn" style="padding:0 10px;min-height:28px;font-size:11px;flex-shrink:0;" title="重新扫描设备存储中的字体文件">重建</button>
+      <div class="row-2">
+        <label>旋转方向
+          <select id="directionSelect">
+            <option value="0">0° 横向</option>
+            <option value="90">90° 顺时针</option>
+            <option value="180">180° 倒立</option>
+            <option value="270">270° 逆时针</option>
+          </select>
+        </label>
+        <label>字体
+          <select id="fontFamilySelect"></select>
+        </label>
       </div>
-    </label>
 
-    <div class="row-2">
-      <label>字号
-        <select id="sizeSelect"></select>
-      </label>
-      <label>行距（倍数）
-        <input type="number" id="lineHeight" value="1.5" min="0" max="3" step="0.05">
-      </label>
-    </div>
-    <div class="row-2">
-      <label>水平对齐
-        <select id="alignSelect">
-          <option value="left">左</option>
-          <option value="center">中</option>
-          <option value="right">右</option>
-        </select>
-      </label>
-      <label>垂直对齐
-        <select id="valignSelect">
-          <option value="top">上</option>
-          <option value="center">中</option>
-          <option value="bottom">下</option>
-        </select>
-      </label>
-    </div>
-    <div class="row-4">
-      <label>上边距
-        <input type="number" id="marginTop" value="20" min="0" max="200">
-      </label>
-      <label>下边距
-        <input type="number" id="marginBottom" value="20" min="0" max="200">
-      </label>
-      <label>左边距
-        <input type="number" id="marginLeft" value="20" min="0" max="200">
-      </label>
-      <label>右边距
-        <input type="number" id="marginRight" value="20" min="0" max="200">
-      </label>
-    </div>
-  </fieldset>
+      <div class="row-2">
+        <label>字号
+          <select id="sizeSelect"></select>
+        </label>
+        <label>行距（倍数）
+          <input type="number" id="lineHeight" value="1.5" min="0" max="3" step="0.05">
+        </label>
+      </div>
 
-  <fieldset style="grid-column:1/-1">
-    <legend>字符样式 / 多选</legend>
-    <div class="chars-strip" id="charsStrip"></div>
-    <div class="sel-info" id="selInfo">未选中任何字符（更改将作用于全局默认）</div>
-    <div class="info">
-      单击选择；Shift+单击选择范围；Ctrl/Cmd+单击切换；不选任何字符则改全局默认。
-    </div>
+      <div class="row-2">
+        <label>水平对齐
+          <select id="alignSelect">
+            <option value="left">左</option>
+            <option value="center">中</option>
+            <option value="right">右</option>
+          </select>
+        </label>
+        <label>垂直对齐
+          <select id="valignSelect">
+            <option value="top">上</option>
+            <option value="center">中</option>
+            <option value="bottom">下</option>
+          </select>
+        </label>
+      </div>
 
-    <div class="sel-range-row">
-      <label>起始<input type="number" id="selStart" min="0" placeholder="0"></label>
-      <label>结束<input type="number" id="selEnd" min="0" placeholder="0"></label>
-      <button type="button" id="selectRangeBtn">按范围选</button>
-    </div>
+      <div class="row-4">
+        <label>上边距
+          <input type="number" id="marginTop" value="20" min="0" max="200">
+        </label>
+        <label>下边距
+          <input type="number" id="marginBottom" value="20" min="0" max="200">
+        </label>
+        <label>左边距
+          <input type="number" id="marginLeft" value="20" min="0" max="200">
+        </label>
+        <label>右边距
+          <input type="number" id="marginRight" value="20" min="0" max="200">
+        </label>
+      </div>
+    </fieldset>
 
-    <div class="style-checks" style="margin-top:8px">
-      <label><input type="checkbox" id="boldCheck">粗体 B</label>
-      <label><input type="checkbox" id="italicCheck">斜体 I</label>
-      <label><input type="checkbox" id="underlineCheck">下划线 U</label>
-      <label><input type="checkbox" id="strikeCheck">删除线 S</label>
-    </div>
+    <fieldset>
+      <legend>颜色（0=黑, 15=白）</legend>
+      <div class="color-mode">
+        <button type="button" data-target="fg" class="active">前景</button>
+        <button type="button" data-target="bg">背景</button>
+        <button type="button" data-target="outline">描边</button>
+        <button type="button" data-target="outline" data-clear="1" class="clear-outline" title="清除描边">✕</button>
+      </div>
+      <div class="color-grid" id="colorGrid"></div>
+      <div class="info" id="currentColorInfo">当前：前景 黑 / 背景 白 / 描边 无</div>
+    </fieldset>
 
-    <div class="char-font-box" id="charFontBox">
-      <label>字符字体 / 字号覆盖
-        <select id="charFontSelect">
-          <option value="">（使用全局）</option>
-        </select>
-      </label>
-      <label style="margin-top:6px">字符字间距覆盖（px，留空跟随全局）
-        <input type="number" id="charLetterSpacing" min="-30" max="60" step="1" placeholder="留空跟随全局">
-      </label>
-      <div class="info">只影响选中的字符，不选则跟随全局设置。</div>
-    </div>
+    <fieldset>
+      <legend>字符样式 / 多选</legend>
+      <div class="chars-strip" id="charsStrip"></div>
+      <div class="sel-info" id="selInfo">未选中任何字符（更改将作用于全局默认）</div>
+      <div class="info" style="margin-bottom:6px">单击选择；Shift+单击范围；Ctrl/Cmd+单击切换；不选则改全局默认。</div>
 
-    <div class="btn-row" style="margin-top:8px">
-      <button type="button" id="selectAllBtn">全选</button>
-      <button type="button" id="invertSelBtn">反向选择</button>
-      <button type="button" id="clearSelBtn">取消选择</button>
-    </div>
-    <div class="btn-row" style="margin-top:6px">
-      <button type="button" id="selectSameBtn">选择同字</button>
-      <button type="button" id="clearSelStyle">清除选中样式</button>
-      <button type="button" id="clearAllStyle">全部重置</button>
-    </div>
-  </fieldset>
+      <div class="sel-range-row">
+        <label>起始<input type="number" id="selStart" min="0" placeholder="0"></label>
+        <label>结束<input type="number" id="selEnd" min="0" placeholder="0"></label>
+        <button type="button" id="selectRangeBtn">按范围选</button>
+      </div>
 
-  <fieldset style="grid-column:1/-1">
-    <legend>间距 / 行设置</legend>
-    <div class="row-2">
-      <label>全局字间距（px，整数，可负）
-        <input type="number" id="letterSpacing" value="0" min="-30" max="60" step="1">
-      </label>
-      <label>说明
-        <span class="info" style="padding-top:6px">
-          全局行距在上方"内容"区。这里设置全局字间距和每行额外行距。
-        </span>
-      </label>
-    </div>
-    <div class="info" style="margin-top:8px">
-      每行"额外行距"：正数增加该行与下一行的间距，负数减少，0 表示不加额外间距。
-      与全局行距叠加，总行高限制为 0（完全重叠）。
-    </div>
-    <div id="lineSettings" class="line-settings"></div>
-  </fieldset>
+      <div class="style-checks">
+        <label><input type="checkbox" id="boldCheck">粗体 B</label>
+        <label><input type="checkbox" id="italicCheck">斜体 I</label>
+        <label><input type="checkbox" id="underlineCheck">下划线 U</label>
+        <label><input type="checkbox" id="strikeCheck">删除线 S</label>
+      </div>
 
-  <fieldset style="grid-column:1/-1">
-    <legend>背景图（SD + Flash）</legend>
-    <div class="bgs-grid" id="bgsGrid"></div>
-    <div class="btn-row" style="margin-top:8px">
-      <button type="button" id="uploadBgBtn">上传新背景</button>
-    </div>
-    <div class="info" id="bgHint">
-      当前：无背景（使用白色填充）。
-    </div>
-  </fieldset>
+      <div class="row-2">
+        <label>字符字体/字号覆盖
+          <select id="charFontSelect">
+            <option value="">（使用全局）</option>
+          </select>
+        </label>
+        <label>字符字间距覆盖（px）
+          <input type="number" id="charLetterSpacing" min="-30" max="60" step="1" placeholder="跟随全局">
+        </label>
+      </div>
 
-  <fieldset style="grid-column:1/-1">
-    <legend>预览</legend>
-    <div class="preview-box">
+      <div class="btn-row">
+        <button type="button" id="selectAllBtn">全选</button>
+        <button type="button" id="invertSelBtn">反选</button>
+        <button type="button" id="clearSelBtn">取消</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" id="selectSameBtn">选择同字</button>
+        <button type="button" id="clearSelStyle">清除选中样式</button>
+        <button type="button" id="clearAllStyle">全部重置</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>间距 / 行设置</legend>
+      <div class="row-2">
+        <label>全局字间距（px）
+          <input type="number" id="letterSpacing" value="0" min="-30" max="60" step="1">
+        </label>
+        <label style="padding-top: 18px;">
+          <span class="info">全局行距在上方"内容"区设置。</span>
+        </label>
+      </div>
+      <div class="info" style="margin-top:8px">每行"额外行距"：正数增加间距，负数减少，0 表示跟随全局。</div>
+      <div id="lineSettings" class="line-settings"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>背景图</legend>
+      <div class="bgs-grid" id="bgsGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;"></div>
+      <div class="btn-row" style="margin-top:8px">
+        <button type="button" id="uploadBgBtn">上传新背景</button>
+      </div>
+      <div class="info" id="bgHint">当前：无背景（使用背景色填充）。</div>
+    </fieldset>
+
+    <fieldset>
+      <div id="status" class="info" style="color:var(--focus); font-weight:bold; font-size:12px;">加载中…</div>
+      <div class="btn-row" style="margin-top:12px">
+        <button type="button" id="refreshBtn">重新渲染</button>
+        <button type="button" id="applyBtn" class="primary" disabled>应用到屏幕</button>
+      </div>
+      <div class="info" style="text-align:center; margin-top:6px;">预览在本地生成；"应用"发送参数由设备流式渲染。</div>
+    </fieldset>
+  </aside>
+
+  <!-- 右侧画布区 -->
+  <section class="canvas-workspace">
+    <div class="canvas-frame">
       <canvas id="previewCanvas" width="800" height="480"></canvas>
     </div>
-    <div class="btn-row" style="margin-top:8px">
-      <button type="button" id="refreshBtn">重新渲染</button>
-      <button type="button" id="applyBtn" class="primary" disabled>应用到屏幕</button>
-    </div>
-    <div class="info">
-      预览在浏览器本地生成；"应用到屏幕"把参数发给设备，由后端流式渲染。
-    </div>
-  </fieldset>
-
-  <div id="status" class="status" style="grid-column:1/-1">加载中…</div>
-
-</div>
+  </section>
 </main>
 
 <div class="font-loading-overlay" id="fontLoadingOverlay" aria-live="polite">
@@ -461,10 +421,16 @@
 'use strict';
 
 const W = 800, H = 480;
-const THUMB_W = 400, THUMB_H = 240;
-const THUMB_BYTES = (THUMB_W * THUMB_H) / 8; // 12000
+const THUMB_W = 200, THUMB_H = 120;
+const THUMB_BYTES = (THUMB_W * THUMB_H) / 2;
+const FRAME_BYTES = W * H / 2;
 
-const FRAME_BYTES = W * H / 8; // 48000
+const PALETTE_RGB = [];
+for(let i=0; i<16; i++){
+  const c = i * 17;
+  PALETTE_RGB.push([c,c,c]);
+}
+
 const MAX_NOTE = 200;
 
 const $ = id => document.getElementById(id);
@@ -475,9 +441,11 @@ let currentFontGroupIdx = 0;
 let currentSize = 32;
 let direction = 0;
 
-const FG_COLOR = { type:'solid', idx:0 };
-const BG_COLOR = { type:'solid', idx:1 };
-const OUTLINE_COLOR = null;
+// 颜色改为 0~15 数值
+let fgColor = 0;
+let bgColor = 15;
+let outlineColor = null;
+let colorTarget = 'fg';
 
 let defaultStyle = {
   bold:false, italic:false, underline:false, strikethrough:false
@@ -506,10 +474,8 @@ const fontLoadingPromises = {};
 const bgThumbCache = {};
 
 /* ===== 缩略图串行队列 ===== */
-
 var thumbQueue = [];
 var thumbProcessing = false;
-
 var thumbObserver = null;
 if ('IntersectionObserver' in window){
   thumbObserver = new IntersectionObserver(function(entries){
@@ -552,7 +518,10 @@ async function processThumbQueue(){
 
 function setStatus(msg, cls){
   statusEl.textContent = msg;
-  statusEl.className = 'status' + (cls ? ' ' + cls : '');
+  statusEl.className = 'info ' + (cls || '');
+  if(cls === 'err') statusEl.style.color = '#f28b82';
+  else if(cls === 'ok') statusEl.style.color = '#7dda7d';
+  else statusEl.style.color = 'var(--focus)';
 }
 
 function renderLineSettings(){
@@ -563,7 +532,9 @@ function renderLineSettings(){
 
   if (lines.length === 0){
     const e = document.createElement('div');
-    e.className = 'line-settings-empty';
+    e.className = 'line-setting-row';
+    e.style.justifyContent = 'center';
+    e.style.color = 'var(--subtle)';
     e.textContent = '（无行）';
     container.appendChild(e);
     return;
@@ -582,7 +553,7 @@ function renderLineSettings(){
     if (line.length === 0){
       prevEl.textContent = '（空行）';
     } else {
-      prevEl.textContent = line.length > 40 ? line.slice(0, 40) + '…' : line;
+      prevEl.textContent = line.length > 30 ? line.slice(0, 30) + '…' : line;
     }
     prevEl.title = line;
 
@@ -595,11 +566,8 @@ function renderLineSettings(){
     inp.value = lineExtras[li] ? String(lineExtras[li]) : '';
     inp.addEventListener('input', () => {
       const v = parseInt(inp.value, 10);
-      if (!v){
-        delete lineExtras[li];
-      } else {
-        lineExtras[li] = v;
-      }
+      if (!v){ delete lineExtras[li]; }
+      else { lineExtras[li] = v; }
       scheduleRender();
     });
 
@@ -612,7 +580,6 @@ function renderLineSettings(){
   });
 }
 
-/* ===== 字体加载进度 UI ===== */
 let _loadState = null;
 let _hideTimer = 0;
 
@@ -643,34 +610,22 @@ function _updateLoadUI(){
     sub += ' · ' + _fmtKb(s.fileBytesReceived) + ' KB';
   }
   $('fontLoadingSub').textContent = sub;
-
   $('fontLoadingSize').textContent = '第 ' + (cf + 1) + ' / ' + tf + ' 个文件';
 }
 
 function beginLoadSession(label, totalFiles){
   clearTimeout(_hideTimer);
   _hideTimer = 0;
-
-  const isSameSession =
-    _loadState && _loadState.label === label && !_loadState.finished;
+  const isSameSession = _loadState && _loadState.label === label && !_loadState.finished;
 
   _loadState = {
-    label: label,
-    totalFiles: Math.max(1, totalFiles || 1),
-    currentFile: 0,
-    fileBytesReceived: 0,
-    fileBytesTotal: 0,
-    finished: false,
-    startedAt: Date.now(),
+    label: label, totalFiles: Math.max(1, totalFiles || 1), currentFile: 0,
+    fileBytesReceived: 0, fileBytesTotal: 0, finished: false, startedAt: Date.now(),
   };
-
   $('fontLoadingTitle').textContent = '加载字模 — ' + label;
   $('fontLoadingBar').classList.remove('done', 'err');
   $('fontLoadingBarFill').style.width = '0%';
-
-  if (!isSameSession){
-    $('fontLoadingOverlay').classList.add('show');
-  }
+  if (!isSameSession){ $('fontLoadingOverlay').classList.add('show'); }
   _updateLoadUI();
 }
 
@@ -715,9 +670,7 @@ function failLoadSession(err){
 
 async function fetchWithProgress(url, onProgress, cache){
   const resp = await fetch(url, { cache: cache || 'force-cache' });
-  if (!resp.ok){
-    throw new Error('HTTP ' + resp.status);
-  }
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
   const total = parseInt(resp.headers.get('Content-Length') || '0', 10) || 0;
 
   if (!resp.body || !resp.body.getReader){
@@ -746,6 +699,23 @@ async function fetchWithProgress(url, onProgress, cache){
     pos += chunks[i].length;
   }
   return out.buffer;
+}
+
+function fmtColor(spec){
+  if (spec === null || spec === undefined) return '无';
+  return '灰度 ' + spec;
+}
+
+function specToJson(spec){
+  if (spec === null) return null;
+  if (spec === undefined) return undefined;
+  return { val: spec };
+}
+
+function specToCss(spec){
+  if (spec === null || spec === undefined) return 'transparent';
+  const c = spec * 17;
+  return 'rgb(' + c + ',' + c + ',' + c + ')';
 }
 
 function buildFontGroups(fontsArray){
@@ -839,787 +809,677 @@ function getCurrentFontInfo(){
 function fontKey(f){ return f.storage + ':' + f.family + ':' + f.size; }
 function fontKeyOfGroupSize(storage, family, size){ return storage + ':' + family + ':' + size; }
 
-/* 省略部分暂未用到的代码，核心加载逻辑通过 API 调用设备完成 */
-
-/* ====== 1bpp 缩略图绘制 ====== */
-function makeThumbFrom1bpp(buf, tw, th){
-  const img = new ImageData(tw, th);
-  const d = img.data;
-  const rowBytes = tw >> 3;
-  for (let y = 0; y < th; y++){
-    const rowBase = y * rowBytes;
-    for (let x = 0; x < tw; x++){
-      const b = buf[rowBase + (x >> 3)];
-      const bit = (b >> (7 - (x & 7))) & 1;
-      const color = bit ? 0 : 255; // 1=黑, 0=白
-      const o = (y * tw + x) * 4;
-      d[o] = color; d[o+1] = color; d[o+2] = color; d[o+3] = 255;
+function parseChunk(buf, glyphs){
+  const view = new DataView(buf);
+  const version = view.getUint8(0);
+  let count, maxH, isUnicode;
+  if (version === 0x02){
+    count = view.getUint8(1); maxH = view.getUint16(2, true); isUnicode = false;
+  } else if (version === 0x03){
+    const flags = view.getUint8(1); count = view.getUint16(2, true); maxH = view.getUint16(4, true); isUnicode = !!(flags & 1);
+  } else {
+    throw new Error('v2/v3 字模版本 ' + version + ' 不支持');
+  }
+  let off = 6;
+  for (let i = 0; i < count; i++){
+    let code;
+    if (isUnicode){ code = (view.getUint8(off) << 8) | view.getUint8(off + 1); off += 2; }
+    else { code = view.getUint8(off); off += 1; }
+    const w = view.getUint8(off);
+    const h = view.getUint8(off + 1);
+    off += 2;
+    if (w === 0 || h === 0){
+      if (!(code in glyphs)) glyphs[code] = null;
+      continue;
     }
+    const rb = (w + 7) >> 3;
+    if (!(code in glyphs)){ glyphs[code] = { w, h, data: new Uint8Array(buf, off, rb * h) }; }
+    off += rb * h;
   }
-  return img;
+  return { maxH, isUnicode };
 }
 
-async function loadBgsList(){
-  try{
-    const r = await fetch('/bgs/list', {cache:'no-store'});
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    bgsList = d.slots || [];
-    bgsSdActive = !!d.sd_active;
-    return d;
-  } catch(e){
-    bgsList = [];
-    bgsSdActive = false;
-    return null;
+function parseV4Chunk(buf){
+  const view = new DataView(buf);
+  const version = view.getUint8(0);
+  if (version !== 0x04) throw new Error('不是 v4');
+  const flags = view.getUint8(1);
+  const count = view.getUint16(2, true);
+  const maxH = view.getUint16(4, true);
+  const isUnicode = !!(flags & 1);
+  const index = {};
+  let off = 6;
+  for (let i = 0; i < count; i++){
+    const code = (view.getUint8(off) << 8) | view.getUint8(off + 1);
+    const gOff = (view.getUint8(off + 2) << 16) | (view.getUint8(off + 3) << 8) | view.getUint8(off + 4);
+    const w = view.getUint8(off + 5);
+    index[code] = [gOff, w];
+    off += 6;
   }
+  return { maxH, isUnicode, index, buf };
 }
 
-function storageLabel(s){ return s === 'sd' ? 'SD' : 'Flash'; }
+function makeLazyV4Font(f, idx, base){
+  const chunkBuf = {};
+  const chunkIndex = {};
+  const glyphCache = new Map();
+  const glyphLru = [];
+  const maxGlyphCache = 300;
 
-async function loadBgThumb(slot, canvas){
-  const key = slot.storage + ':' + slot.index;
-  if (bgThumbCache[key]){
-    canvas.width = THUMB_W;
-    canvas.height = THUMB_H;
-    canvas.getContext('2d').putImageData(bgThumbCache[key], 0, 0);
-    canvas.style.width = '100%';
-    canvas.classList.remove('placeholder');
-    return;
-  }
-  try{
-    const url = '/bgs/thumb/' + slot.index + '?storage=' + slot.storage;
-    const r = await fetch(url, {cache:'force-cache'});
-    if (!r.ok) return;
-    const buf = new Uint8Array(await r.arrayBuffer());
-    if (buf.length !== THUMB_BYTES) return;
-    const imgData = makeThumbFrom1bpp(buf, THUMB_W, THUMB_H);
-    bgThumbCache[key] = imgData;
-    canvas.width = THUMB_W;
-    canvas.height = THUMB_H;
-    canvas.getContext('2d').putImageData(imgData, 0, 0);
-    canvas.style.width = '100%';
-    canvas.classList.remove('placeholder');
-  } catch(e){
-    console.warn('bg thumb fail', e);
-  }
-}
+  const chunksArr = idx.chunks;
+  const maxH = idx.max_h;
+  const isUnicode = idx.unicode;
 
-function renderBgsGrid(){
-  const grid = $('bgsGrid');
-  if (!grid) return;
-  grid.innerHTML = '';
-
-  const noneCell = document.createElement('div');
-  noneCell.className = 'bg-cell none' + (selectedBgStorage === null ? ' active' : '');
-  const noneLbl = document.createElement('div');
-  noneLbl.className = 'bg-label';
-  noneLbl.textContent = '无背景';
-  noneCell.appendChild(noneLbl);
-  noneCell.addEventListener('click', () => selectBg(null, -1));
-  grid.appendChild(noneCell);
-
-  if (!bgsList.length){
-    const hint = document.createElement('div');
-    hint.style.cssText = 'grid-column:2/-1;color:var(--subtle);font-size:11px;padding:8px;line-height:1.4;';
-    hint.textContent = '暂无背景图，点下方"上传新背景"添加。';
-    grid.appendChild(hint);
-    return;
-  }
-
-  bgsList.forEach(slot => {
-    const cell = document.createElement('div');
-    const isSel = (selectedBgStorage === slot.storage && selectedBgIndex === slot.index);
-    cell.className = 'bg-cell' + (isSel ? ' active' : '');
-    cell.dataset.storage = slot.storage;
-    cell.dataset.index = String(slot.index);
-
-    const cvs = document.createElement('canvas');
-    cvs.className = 'bg-thumb placeholder';
-    cvs.width = THUMB_W;
-    cvs.height = THUMB_H;
-    cvs.dataset.slot = String(slot.index);
-    cvs.dataset.storage = slot.storage;
-    cvs.dataset.note = slot.note || '';
-    cell.appendChild(cvs);
-
-    const lbl = document.createElement('div');
-    lbl.className = 'bg-label';
-    lbl.innerHTML = '[' + storageLabel(slot.storage) + '] ' + (slot.index + 1);
-    cell.appendChild(lbl);
-
-    if (slot.note){
-      const note = document.createElement('div');
-      note.className = 'bg-note';
-      note.textContent = slot.note;
-      note.title = slot.note;
-      cell.appendChild(note);
+  function findChunk(code){
+    let lo = 0, hi = chunksArr.length - 1;
+    while (lo <= hi){
+      const mid = (lo + hi) >> 1;
+      const c = chunksArr[mid];
+      if (code < c.min) hi = mid - 1;
+      else if (code > c.max) lo = mid + 1;
+      else return mid;
     }
+    return -1;
+  }
 
-    const actions = document.createElement('div');
-    actions.className = 'bg-actions';
-
-    const bNote = document.createElement('button');
-    bNote.textContent = '备注';
-    bNote.onclick = (e) => { e.stopPropagation(); editBgNote(slot); };
-    actions.appendChild(bNote);
-
-    const bDel = document.createElement('button');
-    bDel.textContent = '删';
-    bDel.className = 'danger';
-    bDel.onclick = (e) => { e.stopPropagation(); deleteBg(slot); };
-    actions.appendChild(bDel);
-
-    cell.appendChild(actions);
-    if (thumbObserver){
-      thumbObserver.observe(cvs);
-    } else {
-      enqueueBgThumb(cvs);
+  async function loadChunk(ci){
+    if (chunkIndex[ci]) return;
+    const c = chunksArr[ci];
+    const url = base + c.name + '.bin';
+    const buf = await fetchWithProgress(url, null, 'force-cache');
+    const view = new DataView(buf);
+    const count = view.getUint16(2, true);
+    const index = {};
+    for (let i = 0; i < count; i++){
+      const off = 6 + i * 6;
+      const code = (view.getUint8(off) << 8) | view.getUint8(off+1);
+      const gOff = (view.getUint8(off+2) << 16) | (view.getUint8(off+3) << 8) | view.getUint8(off+4);
+      const w = view.getUint8(off+5);
+      index[code] = [gOff, w];
     }
-    cell.addEventListener('click', () => selectBg(slot.storage, slot.index));
-    grid.appendChild(cell);
-  });
-}
-
-function updateBgsGridActive(){
-  const grid = $('bgsGrid');
-  if (!grid) return;
-  const none = grid.querySelector('.bg-cell.none');
-  if (none) none.classList.toggle('active', selectedBgStorage === null);
-  grid.querySelectorAll('.bg-cell[data-storage]').forEach(cell => {
-    const isSel = (cell.dataset.storage === selectedBgStorage &&
-                   parseInt(cell.dataset.index) === selectedBgIndex);
-    cell.classList.toggle('active', isSel);
-  });
-}
-
-async function selectBg(storage, index){
-  selectedBgStorage = storage;
-  selectedBgIndex = index;
-  updateBgsGridActive();
-  updateBgHint();
-
-  if (storage === null || index < 0){
-    bgImageBuf = null;
-    bgImageSlot = -1;
-    bgImageStorage = null;
-    scheduleRender();
-    return;
+    chunkBuf[ci] = buf;
+    chunkIndex[ci] = index;
   }
 
-  if (bgImageSlot === index && bgImageStorage === storage && bgImageBuf){
-    scheduleRender();
-    return;
+  function readGlyph(code){
+    const ci = findChunk(code);
+    if (ci < 0) return null;
+    if (!chunkIndex[ci]) return undefined;
+    const e = chunkIndex[ci][code];
+    if (!e) return null;
+    const [gOff, w] = e;
+    if (w === 0) return null;
+    const rb = (w + 7) >> 3;
+    const size = rb * maxH;
+    return { w, h: maxH, data: new Uint8Array(chunkBuf[ci], gOff, size) };
   }
+
+  return {
+    maxH, isUnicode, findChunk,
+    async ensureChunksFor(codes){
+      const needed = new Set();
+      for (const code of codes){
+        const ci = findChunk(code);
+        if (ci >= 0 && !chunkIndex[ci]) needed.add(ci);
+      }
+      if (needed.size === 0) return;
+
+      const arr = Array.from(needed).sort((a, b) => a - b);
+      beginLoadSession(f.family + ' ' + f.size + 'px', arr.length);
+      try {
+        for (let i = 0; i < arr.length; i++){
+          const ci = arr[i];
+          updateLoadProgress(i, 0, 0);
+          const c = chunksArr[ci];
+          const url = base + c.name + '.bin';
+          let buf;
+          try {
+            buf = await fetchWithProgress(url, (recv, tot) => { updateLoadProgress(i, recv, tot); }, 'force-cache');
+          } catch(e){ continue; }
+
+          const view = new DataView(buf);
+          const count = view.getUint16(2, true);
+          const index = {};
+          for (let j = 0; j < count; j++){
+            const off = 6 + j * 6;
+            const code = (view.getUint8(off) << 8) | view.getUint8(off+1);
+            const gOff = (view.getUint8(off+2) << 16) | (view.getUint8(off+3) << 8) | view.getUint8(off+4);
+            const w = view.getUint8(off+5);
+            index[code] = [gOff, w];
+          }
+          chunkBuf[ci] = buf;
+          chunkIndex[ci] = index;
+        }
+        finishLoadSession();
+      } catch(e){
+        failLoadSession(e.message || e);
+        throw e;
+      }
+    },
+    glyph(code){
+      if (glyphCache.has(code)) return glyphCache.get(code);
+      const g = readGlyph(code);
+      if (g === undefined) return null;
+      if (g === null){ glyphCache.set(code, null); return null; }
+      glyphCache.set(code, g);
+      glyphLru.push(code);
+      while (glyphLru.length > maxGlyphCache){
+        const ev = glyphLru.shift();
+        glyphCache.delete(ev);
+      }
+      return g;
+    }
+  };
+}
+
+async function _loadAllChunks(f, names){
+  const urls = names.map(n =>
+    '/fonts/get?storage=' + encodeURIComponent(f.storage) +
+    '&name=' + encodeURIComponent(n));
+
+  const totalFiles = urls.length;
+  beginLoadSession(f.family + ' ' + f.size + 'px', totalFiles);
+
+  const buffers = [];
+  const indices = [];
+  let maxH = 0, isUnicode = true;
+  let firstVer = 0;
 
   try {
-    const r = await fetch('/bgs/get/' + index + '?storage=' + storage, {cache:'no-store'});
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const bin = new Uint8Array(await r.arrayBuffer());
-    if (bin.length !== FRAME_BYTES) throw new Error('大小异常');
-    bgImageBuf = bin; // 直接存 1bpp 数据
-    bgImageSlot = index;
-    bgImageStorage = storage;
-    setStatus('背景 ' + storageLabel(storage) + ' ' + (index + 1) + ' 已加载', 'ok');
-    scheduleRender();
-  } catch(e){
-    bgImageBuf = null;
-    bgImageSlot = -1;
-    setStatus('加载背景失败：' + e.message, 'err');
-  }
-}
+    for (let i = 0; i < urls.length; i++){
+      updateLoadProgress(i, 0, 0);
+      let buf;
+      try {
+        buf = await fetchWithProgress(urls[i], (recv, tot) => { updateLoadProgress(i, recv, tot); }, 'force-cache');
+      } catch(e){ buffers.push(null); indices.push(null); continue; }
+      buffers.push(buf);
 
-function updateBgHint(){
-  const hint = $('bgHint');
-  if (!hint) return;
-  if (selectedBgStorage === null){
-    hint.textContent = '当前：无背景（使用白色填充）。选背景后文字叠在图上，旋转仅作用于文字。';
-    return;
-  }
-  const slot = bgsList.find(s => s.index === selectedBgIndex && s.storage === selectedBgStorage) || {};
-  const note = slot.note || '';
-  let msg = '当前背景：' + storageLabel(selectedBgStorage) + ' 槽位 ' + (selectedBgIndex + 1);
-  if (note) msg += '（' + note + '）';
-  if (direction !== 0) msg += ' · 背景按 0° 铺底，旋转只作用于文字层';
-  hint.textContent = msg;
-}
-
-async function editBgNote(slot){
-  const cur = slot.note || '';
-  const val = prompt('修改 ' + storageLabel(slot.storage) + ' 背景 ' +
-    (slot.index + 1) + ' 的备注（留空清除）', cur);
-  if (val === null) return;
-  const note = val.slice(0, MAX_NOTE).trim();
-  try{
-    const r = await fetch('/bgs/note/' + slot.index + '?storage=' + slot.storage, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({note})
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    await loadBgsList();
-    renderBgsGrid();
-    updateBgHint();
-    setStatus('备注已保存', 'ok');
-  } catch(e){
-    setStatus('保存备注失败：' + e.message, 'err');
-  }
-}
-
-async function deleteBg(slot){
-  if (!confirm('删除 ' + storageLabel(slot.storage) + ' 背景 ' +
-    (slot.index + 1) + ' 及备注？')) return;
-  try{
-    const r = await fetch('/bgs/delete/' + slot.index + '?storage=' + slot.storage, {method:'POST'});
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    if (selectedBgStorage === slot.storage && selectedBgIndex === slot.index){
-      selectedBgStorage = null;
-      selectedBgIndex = -1;
-      bgImageBuf = null;
-      bgImageSlot = -1;
-      bgImageStorage = null;
+      if (i === 0){ firstVer = new DataView(buf).getUint8(0); }
+      if (firstVer === 0x04){
+        try {
+          const info = parseV4Chunk(buf);
+          indices.push(info.index);
+          if (i === 0){ maxH = info.maxH; isUnicode = info.isUnicode; }
+        } catch(e){ indices.push(null); }
+      }
     }
-    const key = slot.storage + ':' + slot.index;
-    delete bgThumbCache[key];
-    await loadBgsList();
-    renderBgsGrid();
-    updateBgHint();
-    scheduleRender();
-    setStatus('背景已删除', 'ok');
-  } catch(e){
-    setStatus('删除失败：' + e.message, 'err');
-  }
-}
 
-function askStorage(title, sdActive, info){
-  return new Promise(resolve => {
-    if (!sdActive){
-      if (confirm(title + '\n\n保存到 Flash？（SD 未挂载）')) resolve('flash');
-      else resolve(null);
-      return;
+    if (firstVer === 0x04){
+      finishLoadSession();
+      return {
+        maxH, isUnicode, buffers, indices,
+        glyph: function(code){
+          for (let i = 0; i < this.indices.length; i++){
+            const idx = this.indices[i];
+            if (!idx) continue;
+            const e = idx[code];
+            if (!e) continue;
+            const [gOff, w] = e;
+            if (w === 0) return null;
+            const rb = (w + 7) >> 3;
+            const size = rb * this.maxH;
+            return { w, h: this.maxH, data: new Uint8Array(this.buffers[i], gOff, size) };
+          }
+          return null;
+        }
+      };
     }
-    const sdFree = info && info.free_sd != null
-      ? 'SD 剩余 ' + (info.free_sd/1024).toFixed(0) + ' KB'
-      : 'SD';
-    const flashFree = info && info.free_flash != null
-      ? 'Flash 剩余 ' + (info.free_flash/1024).toFixed(0) + ' KB'
-      : 'Flash';
-    const ans = prompt(title + '\n\n1 = SD（' + sdFree + '）\n2 = Flash（' +
-      flashFree + '）\n0 = 取消', '1');
-    if (ans === '1') resolve('sd');
-    else if (ans === '2') resolve('flash');
-    else resolve(null);
-  });
-}
 
-function scheduleRender(){
-  clearTimeout(renderTimer);
-  renderTimer = setTimeout(doRender, 180);
-}
-
-async function doRender(){
-  if (rendering){
-    pendingRender = true;
-    return;
-  }
-  rendering = true;
-  try {
-    setStatus('渲染预览中…', 'busy');
-
-    const curFont = getCurrentFontInfo();
-    if (!curFont) throw new Error('未选择字体');
-
-    const text = $('textInput').value;
-    const innerW = (direction === 90 || direction === 270) ? H : W;
-    const innerH = (direction === 90 || direction === 270) ? W : H;
-
-    const opts = {
-      lineHeight: Math.max(0, parseFloat($('lineHeight').value) || 0),
-      letterSpacing: parseInt($('letterSpacing').value, 10) || 0,
-      lineExtras,
-      align: $('alignSelect').value,
-      valign: $('valignSelect').value,
-      marginTop: parseInt($('marginTop').value) || 0,
-      marginBottom: parseInt($('marginBottom').value) || 0,
-      marginLeft: parseInt($('marginLeft').value) || 0,
-      marginRight: parseInt($('marginRight').value) || 0,
+    const glyphs = {};
+    for (let i = 0; i < urls.length; i++){
+      let buf = buffers[i];
+      if (!buf) continue;
+      try {
+        const info = parseChunk(buf, glyphs);
+        if (!maxH) maxH = info.maxH;
+        isUnicode = info.isUnicode;
+      } catch(e){}
+    }
+    finishLoadSession();
+    return {
+      maxH, glyphs, isUnicode,
+      glyph: function(code){ return this.glyphs[code] || null; }
     };
+  } catch(e){
+    failLoadSession(e.message || e);
+    throw e;
+  }
+}
 
-    // 这里为了前端预览，使用 canvas 简单绘制，真实渲染由后端完成
-    const cvs = $('previewCanvas');
-    cvs.width = W;
-    cvs.height = H;
-    const ctx = cvs.getContext('2d');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, W, H);
+async function _loadFontImpl(f){
+  const base = f.storage === 'sd' ? '/sd/fonts/' : '/www/fonts/';
+  const idxUrl = base + f.family + '_' + f.size + '.idx';
+  try {
+    const r = await fetch(idxUrl, { cache:'force-cache' });
+    if (r.ok){
+      const idx = await r.json();
+      if (idx && idx.chunks && idx.chunks.length > 0){
+        return makeLazyV4Font(f, idx, base);
+      }
+    }
+  } catch(e){}
 
-    if (bgImageBuf){
-      // 绘制背景 1bpp
-      const imgData = ctx.createImageData(W, H);
-      const rowBytes = W >> 3;
-      for (let y = 0; y < H; y++){
-        const rowBase = y * rowBytes;
-        for (let x = 0; x < W; x++){
-          const b = bgImageBuf[rowBase + (x >> 3)];
-          const bit = (b >> (7 - (x & 7))) & 1;
-          const color = bit ? 0 : 255;
-          const o = (y * W + x) * 4;
-          imgData.data[o] = color; imgData.data[o+1] = color; imgData.data[o+2] = color; imgData.data[o+3] = 255;
+  const names = [];
+  const cnt = f.chunk_count || 1;
+  for (let i = 0; i < cnt; i++){
+    names.push(f.family + '_' + f.size + '_' + i);
+  }
+  return await _loadAllChunks(f, names);
+}
+
+async function loadFontByKey(key){
+  if (fontCache[key]) return fontCache[key];
+  if (fontLoadingPromises[key]) return fontLoadingPromises[key];
+
+  const parts = key.split(':');
+  if (parts.length < 3) throw new Error('非法 fontKey: ' + key);
+  const sizeStr = parts[parts.length - 1];
+  const storage = parts[0];
+  const family = parts.slice(1, parts.length - 1).join(':');
+  const size = parseInt(sizeStr);
+
+  const g = fontGroups.find(x => x.storage === storage && x.family === family);
+  if (!g) throw new Error('字体组不存在: ' + key);
+  const f = g.bySize[size];
+  if (!f) throw new Error('字体不存在: ' + key);
+
+  const promise = (async () => {
+    const result = await _loadFontImpl(f);
+    fontCache[key] = result;
+    return result;
+  })();
+  fontLoadingPromises[key] = promise;
+  try {
+    return await promise;
+  } finally {
+    delete fontLoadingPromises[key];
+  }
+}
+
+function charCode(font, ch){
+  if (font.isUnicode) return ch.codePointAt(0);
+  const code = ch.charCodeAt(0);
+  return code > 0xFF ? null : code;
+}
+
+function glyphOf(font, ch){
+  const code = charCode(font, ch);
+  if (code === null) return null;
+  return font.glyph(code);
+}
+
+async function preloadFont(font, text){
+  if (!font || !font.ensureChunksFor) return;
+  const codes = new Set();
+  for (const ch of text){
+    if (ch === '\n' || ch === '\r') continue;
+    const code = charCode(font, ch);
+    if (code !== null) codes.add(code);
+  }
+  await font.ensureChunksFor(codes);
+}
+
+function charAtVisual(text, visualIdx){
+  let cur = 0;
+  for (let i = 0; i < text.length; i++){
+    const code = text.codePointAt(i);
+    if (code === 10){ }
+    else {
+      if (cur === visualIdx) return String.fromCodePoint(code);
+      cur++;
+    }
+    if (code > 0xFFFF) i++;
+  }
+  return null;
+}
+
+function blitChar(buf, w, h, glyph, x, y, style, fontH){
+  const gw = glyph.w, gh = glyph.h, data = glyph.data;
+  if (gw === 0 || gh === 0) return;
+
+  const bold = !!style.bold;
+  const italic = !!style.italic;
+  const outlineSpec = style.outline;
+  const fgSpec = style.fg !== undefined ? style.fg : fgColor;
+
+  const boldDx = bold ? 1 : 0;
+  const shearPx = italic ? Math.max(1, Math.floor(fontH / 8)) : 0;
+  const rb = Math.ceil(gw / 8);
+  const denom = Math.max(1, gh - 1);
+
+  const onSet = new Set();
+  const KEY = (px, py) => px * 10000 + py;
+
+  for (let row = 0; row < gh; row++){
+    const py = y + row;
+    if (py < 0 || py >= h) continue;
+    const offset = shearPx ? Math.floor((gh - 1 - row) * shearPx / denom) : 0;
+    const base = row * rb;
+    for (let bit = 0; bit < gw; bit++){
+      if (data[base + (bit >> 3)] & (0x80 >> (bit & 7))){
+        const px = x + offset + bit;
+        if (px >= 0 && px < w) onSet.add(KEY(px, py));
+        if (boldDx && px + boldDx >= 0 && px + boldDx < w) onSet.add(KEY(px + boldDx, py));
+      }
+    }
+  }
+
+  if (outlineSpec !== null && outlineSpec !== undefined){
+    const expanded = new Set();
+    onSet.forEach(key => {
+      const px = Math.floor(key / 10000);
+      const py = key % 10000;
+      for (let dx = -1; dx <= 1; dx++){
+        for (let dy = -1; dy <= 1; dy++){
+          if (dx === 0 && dy === 0) continue;
+          const nx = px + dx, ny = py + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const nk = KEY(nx, ny);
+          if (!onSet.has(nk)) expanded.add(nk);
         }
       }
-      ctx.putImageData(imgData, 0, 0);
-    }
-
-    // 简单画点字做预览
-    ctx.fillStyle = '#000';
-    ctx.font = `${currentSize}px ${curFont.family}`;
-    let cy = opts.marginTop + currentSize;
-    text.split('\n').forEach((line, i) => {
-      let cx = opts.marginLeft;
-      if (opts.align === 'center') {
-         ctx.textAlign = 'center';
-         cx = W / 2;
-      } else if (opts.align === 'right') {
-         ctx.textAlign = 'right';
-         cx = W - opts.marginRight;
-      } else {
-         ctx.textAlign = 'left';
-      }
-      ctx.fillText(line, cx, cy);
-      cy += currentSize * opts.lineHeight + (lineExtras[i] || 0);
     });
+    expanded.forEach(key => {
+      const px = Math.floor(key / 10000);
+      const py = key % 10000;
+      buf[py * w + px] = outlineSpec;
+    });
+  }
 
-    $('applyBtn').disabled = false;
-    setStatus('预览已生成（实际渲染以设备为准）', 'ok');
-  } catch(e){
-    setStatus('渲染失败：' + e.message, 'err');
-    $('applyBtn').disabled = true;
-    lastBin = null;
-  } finally {
-    rendering = false;
-    if (pendingRender){
-      pendingRender = false;
-      setTimeout(doRender, 0);
+  onSet.forEach(key => {
+    const px = Math.floor(key / 10000);
+    const py = key % 10000;
+    buf[py * w + px] = fgSpec;
+  });
+}
+
+function layoutTextLayer(text, charFontMap, defaultFont, innerW, innerH, opts){
+  const buf = new Uint8Array(innerW * innerH);
+  buf.fill(255); // 255 标记为透明
+
+  const lines = text.split('\n');
+  const lineCharStarts = [];
+  let ci = 0;
+  for (const line of lines){
+    lineCharStarts.push(ci);
+    ci += line.length;
+  }
+
+  const globalLS = opts.letterSpacing || 0;
+  const extras = opts.lineExtras || {};
+
+  const lineInfos = [];
+  let totalH = 0;
+  for (let li = 0; li < lines.length; li++){
+    const line = lines[li];
+    const baseIdx = lineCharStarts[li];
+    let lineMaxH = defaultFont.maxH;
+    const chars = [];
+
+    for (let cii = 0; cii < line.length; cii++){
+      const gidx = baseIdx + cii;
+      const f = charFontMap[gidx] || defaultFont;
+      const ch = line[cii];
+      const g = glyphOf(f, ch);
+      let advance;
+      if (!g || g.w === 0) advance = Math.floor(f.maxH / 2);
+      else advance = g.w;
+
+      const ov = perChar[gidx];
+      const ls = (ov && ov.letterSpacing !== undefined) ? ov.letterSpacing : globalLS;
+
+      chars.push({ ch, font: f, glyph: g, advance, fontH: f.maxH, letterSpacing: ls });
+      if (f.maxH > lineMaxH) lineMaxH = f.maxH;
     }
+
+    let lh = Math.max(0, Math.floor(lineMaxH * opts.lineHeight));
+    const ex = (li in extras) ? extras[li] : 0;
+    lh = Math.max(0, lh + ex);
+
+    lineInfos.push({ chars, lineMaxH, lh });
+    totalH += lh;
+  }
+
+  const availH = innerH - opts.marginTop - opts.marginBottom;
+  let cy0;
+  if (opts.valign === 'center') cy0 = opts.marginTop + Math.max(0, Math.floor((availH - totalH) / 2));
+  else if (opts.valign === 'bottom') cy0 = opts.marginTop + Math.max(0, availH - totalH);
+  else cy0 = opts.marginTop;
+
+  let cy = cy0;
+  for (let li = 0; li < lineInfos.length; li++){
+    const info = lineInfos[li];
+    let lineW = 0;
+    for (const c of info.chars) lineW += c.advance + c.letterSpacing;
+
+    let cx;
+    if (opts.align === 'center') cx = opts.marginLeft + Math.max(0, Math.floor((innerW - opts.marginLeft - opts.marginRight - lineW) / 2));
+    else if (opts.align === 'right') cx = innerW - opts.marginRight - lineW;
+    else cx = opts.marginLeft;
+
+    const baseIdx = lineCharStarts[li];
+    for (let cii = 0; cii < info.chars.length; cii++){
+      const c = info.chars[cii];
+      const gidx = baseIdx + cii;
+      let style = defaultStyle;
+
+      if (perChar[gidx]){
+        style = {
+          fg: perChar[gidx].fg !== undefined ? perChar[gidx].fg : fgColor,
+          bg: perChar[gidx].bg !== undefined ? perChar[gidx].bg : bgColor,
+          outline: perChar[gidx].outline !== undefined ? perChar[gidx].outline : outlineColor,
+          bold: perChar[gidx].bold !== undefined ? perChar[gidx].bold : defaultStyle.bold,
+          italic: perChar[gidx].italic !== undefined ? perChar[gidx].italic : defaultStyle.italic,
+          underline: perChar[gidx].underline !== undefined ? perChar[gidx].underline : defaultStyle.underline,
+          strikethrough: perChar[gidx].strikethrough !== undefined ? perChar[gidx].strikethrough : defaultStyle.strikethrough,
+        };
+      } else {
+        style = {
+          fg: fgColor, bg: bgColor, outline: outlineColor,
+          bold: defaultStyle.bold, italic: defaultStyle.italic,
+          underline: defaultStyle.underline, strikethrough: defaultStyle.strikethrough,
+        };
+      }
+
+      const charTop = cy + (info.lineMaxH - c.fontH);
+
+      if (c.glyph && c.glyph.w > 0){
+        blitChar(buf, innerW, innerH, c.glyph, cx, charTop, style, c.fontH);
+      }
+
+      if (style.underline){
+        const ulY = charTop + c.fontH - 2;
+        if (ulY >= 0 && ulY < innerH){
+          for (let x = cx; x < cx + c.advance; x++){
+            if (x >= 0 && x < innerW) buf[ulY * innerW + x] = style.fg;
+          }
+        }
+      }
+      if (style.strikethrough){
+        const stY = charTop + Math.floor(c.fontH / 2);
+        if (stY >= 0 && stY < innerH){
+          for (let x = cx; x < cx + c.advance; x++){
+            if (x >= 0 && x < innerW) buf[stY * innerW + x] = style.fg;
+          }
+        }
+      }
+      cx += c.advance + c.letterSpacing;
+    }
+    cy += info.lh;
+  }
+  return buf;
+}
+
+function rotateBuf(buf, innerW, innerH, dir){
+  if (dir === 0) return { buf, w: innerW, h: innerH };
+  if (dir === 180){
+    const out = new Uint8Array(innerW * innerH);
+    for (let y = 0; y < innerH; y++){
+      for (let x = 0; x < innerW; x++){
+        out[(innerH - 1 - y) * innerW + (innerW - 1 - x)] = buf[y * innerW + x];
+      }
+    }
+    return { buf: out, w: innerW, h: innerH };
+  }
+  const outW = innerH, outH = innerW;
+  const out = new Uint8Array(outW * outH);
+  for (let y = 0; y < innerH; y++){
+    for (let x = 0; x < innerW; x++){
+      let nx, ny;
+      if (dir === 90){ nx = innerH - 1 - y; ny = x; }
+      else { nx = y; ny = innerW - 1 - x; }
+      out[ny * outW + nx] = buf[y * innerW + x];
+    }
+  }
+  return { buf: out, w: outW, h: outH };
+}
+
+function to4bpp(idxBuf, w, h){
+  const out = new Uint8Array((w * h) / 2);
+  let o = 0;
+  for (let i = 0; i < w * h; i += 2){
+    const hi = idxBuf[i] & 0x0F;
+    const lo = idxBuf[i + 1] & 0x0F;
+    out[o++] = (hi << 4) | lo;
+  }
+  return out;
+}
+
+function renderBinToCanvas(bin, canvas, cw, ch){
+  cw = cw || W;
+  ch = ch || H;
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(cw, ch);
+  const d = img.data;
+  const rowBytes = cw >> 1;
+  for (let y = 0; y < ch; y++){
+    const rowBase = y * rowBytes;
+    const pixBase = y * cw * 4;
+    for (let xb = 0; xb < rowBytes; xb++){
+      const b = bin[rowBase + xb];
+      const hi = (b >> 4) & 0xF;
+      const lo = b & 0xF;
+
+      const c0 = hi * 17;
+      const c1 = lo * 17;
+
+      const o0 = pixBase + xb * 8;
+      const o1 = o0 + 4;
+      d[o0]=c0; d[o0+1]=c0; d[o0+2]=c0; d[o0+3]=255;
+      d[o1]=c1; d[o1+1]=c1; d[o1+2]=c1; d[o1+3]=255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function binToIndices(bin){
+  const out = new Uint8Array(W * H);
+  let k = 0;
+  for (let y = 0; y < H; y++){
+    for (let x = 0; x < W; x += 2){
+      const b = bin[k++];
+      out[y*W+x] = (b >> 4) & 0xF;
+      out[y*W+x+1] = b & 0xF;
+    }
+  }
+  return out;
+}
+
+function buildColorPickers(){
+  const basic = $('colorGrid');
+  basic.innerHTML = '';
+  for(let i=0; i<16; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'color-cell';
+    cell.dataset.kind = 'solid';
+    cell.dataset.idx = i;
+    cell.title = '灰度 ' + i;
+
+    const sw = document.createElement('div');
+    sw.className = 'swatch';
+    const c = i * 17;
+    sw.style.background = 'rgb(' + c + ',' + c + ',' + c + ')';
+    cell.appendChild(sw);
+
+    const lb = document.createElement('span');
+    lb.className = 'label'; lb.textContent = String(i);
+    cell.appendChild(lb);
+
+    cell.addEventListener('click', () => applyColorChoice(i));
+    basic.appendChild(cell);
   }
 }
 
-async function doApply(){
-  const perCharPayload = {};
-  for (const [idx, style] of Object.entries(perChar)){
-    const item = {};
-    if (style.bold !== undefined) item.bold = !!style.bold;
-    if (style.italic !== undefined) item.italic = !!style.italic;
-    if (style.underline !== undefined) item.underline = !!style.underline;
-    if (style.strikethrough !== undefined) item.strikethrough = !!style.strikethrough;
-    if (style.letterSpacing !== undefined){
-      const v = parseInt(style.letterSpacing, 10);
-      if (!isNaN(v)) item.letterSpacing = v;
-    }
-    if (style.fontKey){
-      const parts = style.fontKey.split(':');
-      const sizeStr = parts[parts.length - 1];
-      const storage = parts[0];
-      const family = parts.slice(1, parts.length - 1).join(':');
-      const size = parseInt(sizeStr);
-      const g = fontGroups.find(x => x.storage === storage && x.family === family);
-      if (g && g.bySize[size]){
-        const paths = buildFontPaths(g.bySize[size]);
-        if (paths) item.font_paths = paths;
-      }
-    }
-    perCharPayload[String(idx)] = item;
+function refreshColorActive(){
+  document.querySelectorAll('.color-cell').forEach(el => el.classList.remove('active'));
+
+  let active = null;
+  let pc = null;
+  if (selectedChars.size > 0){
+    pc = perChar[[...selectedChars][0]] || null;
   }
 
-  const globalLetterSpacing = parseInt($('letterSpacing').value, 10) || 0;
-  const defaultStylePayload = {
-    bold: !!defaultStyle.bold,
-    italic: !!defaultStyle.italic,
-    underline: !!defaultStyle.underline,
-    strikethrough: !!defaultStyle.strikethrough,
-    letter_spacing: globalLetterSpacing,
-  };
-
-  const f = getCurrentFontInfo();
-  const defaultFontPaths = f ? buildFontPaths(f) : null;
-
-  if (!defaultFontPaths || !defaultFontPaths.length){
-    setStatus('错误：无法构造字体路径。', 'err');
-    return;
+  if (pc){
+    if (colorTarget === 'fg')      active = pc.fg !== undefined ? pc.fg : fgColor;
+    else if (colorTarget === 'bg') active = pc.bg !== undefined ? pc.bg : bgColor;
+    else                           active = pc.outline !== undefined ? pc.outline : outlineColor;
+  } else {
+    active = colorTarget === 'fg' ? fgColor
+           : colorTarget === 'bg' ? bgColor
+           : outlineColor;
   }
 
-  const lineExtrasPayload = Object.keys(lineExtras).length > 0
-    ? { ...lineExtras } : null;
-
-  const payload = {
-    text: $('textInput').value,
-    size: currentSize,
-    direction: direction,
-    per_char: perCharPayload,
-    default_style: defaultStylePayload,
-    align: $('alignSelect').value,
-    valign: $('valignSelect').value,
-    line_height: Math.max(0, parseFloat($('lineHeight').value) || 0),
-    line_extras: lineExtrasPayload,
-    margin_top: parseInt($('marginTop').value) || 0,
-    margin_bottom: parseInt($('marginBottom').value) || 0,
-    margin_left: parseInt($('marginLeft').value) || 0,
-    margin_right: parseInt($('marginRight').value) || 0,
-    stream: true,
-    font_paths: defaultFontPaths,
-    background: (selectedBgIndex >= 0 && selectedBgStorage)
-      ? (selectedBgStorage === 'sd'
-          ? ('/sd/bgs/' + selectedBgIndex + '.bin')
-          : ('/bgs/' + selectedBgIndex + '.bin'))
-      : null,
-  };
-
-  $('applyBtn').disabled = true;
-  setStatus('设备渲染中，请稍候…', 'busy');
-
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 600000);
-    const resp = await fetch('/text/render', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload),
-      signal: ctrl.signal
+  if (active !== null && active !== undefined){
+    document.querySelectorAll('.color-cell').forEach(el => {
+      if (parseInt(el.dataset.idx) === active) el.classList.add('active');
     });
-    clearTimeout(t);
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
-    if (data.started) {
-      setStatus('已发送渲染指令 ✓  屏幕约 2~5 秒后更新，请查看屏幕确认。', 'ok');
-    } else if (data.ok) {
-      setStatus('已显示到屏幕 ✓', 'ok');
-    } else {
-      throw new Error(data.error || '未知错误');
-    }
-  } catch(e){
-    if (e.name === 'AbortError'){
-      setStatus('请求超时。屏幕可能已显示成功，请查看屏幕确认。', 'err');
-    } else {
-      setStatus('上传失败：' + e.message, 'err');
-    }
-  } finally {
-    $('applyBtn').disabled = !lastBin;
   }
+
+  let info = '全局：前景 ' + fmtColor(fgColor)
+           + ' / 背景 ' + fmtColor(bgColor)
+           + ' / 描边 ' + fmtColor(outlineColor);
+  if (pc){
+    info += '   |   选中：前景 '
+          + fmtColor(pc.fg !== undefined ? pc.fg : fgColor)
+          + ' / 背景 ' + fmtColor(pc.bg !== undefined ? pc.bg : bgColor)
+          + ' / 描边 ' + fmtColor(pc.outline !== undefined ? pc.outline : outlineColor);
+  }
+  $('currentColorInfo').textContent = info;
 }
 
-function bindEvents(){
-  $('textInput').addEventListener('input', () => {
-    const t = $('textInput').value;
-    let n = 0;
-    for (let i = 0; i < t.length; i++) n++;
-    $('charCount').textContent = n;
-    selectedChars.clear();
-    perChar = {};
-    lastClickIdx = -1;
+function applyColorChoice(val){
+  const hasSel = selectedChars.size > 0;
 
-    const lineCount = t.split('\n').length;
-    for (const k in lineExtras){
-      if (parseInt(k, 10) >= lineCount) delete lineExtras[k];
-    }
-
-    renderChars();
-    updateStyleChecks();
-    refreshCharFontBox();
-    renderLineSettings();
-    scheduleRender();
-  });
-
-  $('fontFamilySelect').addEventListener('change', () => {
-    currentFontGroupIdx = parseInt($('fontFamilySelect').value) || 0;
-    rebuildSizeSelect();
-    scheduleRender();
-  });
-
-  $('sizeSelect').addEventListener('change', () => {
-    currentSize = parseInt($('sizeSelect').value);
-    scheduleRender();
-  });
-
-  $('directionSelect').addEventListener('change', () => {
-    direction = parseInt($('directionSelect').value);
-    updateBgHint();
-    scheduleRender();
-  });
-
-  ['lineHeight','letterSpacing',
-   'alignSelect','valignSelect','marginTop','marginBottom','marginLeft','marginRight']
-    .forEach(id => {
-      $(id).addEventListener('input', scheduleRender);
-      $(id).addEventListener('change', scheduleRender);
-    });
-
-  const STYLE_FIELD_MAP = {
-    boldCheck: 'bold',
-    italicCheck: 'italic',
-    underlineCheck: 'underline',
-    strikeCheck: 'strikethrough'
-  };
-  ['boldCheck','italicCheck','underlineCheck','strikeCheck'].forEach(id => {
-    $(id).addEventListener('change', () => {
-      const field = STYLE_FIELD_MAP[id];
-      const val = $(id).checked;
-      if (selectedChars.size > 0){
-        selectedChars.forEach(idx => {
-          if (!perChar[idx]) perChar[idx] = {};
-          perChar[idx][field] = val;
-        });
-      } else {
-        defaultStyle[field] = val;
-      }
-      renderChars();
-      scheduleRender();
-    });
-  });
-
-  $('charFontSelect').addEventListener('change', () => {
-    if (selectedChars.size === 0) return;
-    const key = $('charFontSelect').value;
-    selectedChars.forEach(idx => {
-      if (!perChar[idx]) perChar[idx] = {};
-      if (key) perChar[idx].fontKey = key;
-      else delete perChar[idx].fontKey;
-    });
-    renderChars();
-    scheduleRender();
-  });
-
-  $('charLetterSpacing').addEventListener('input', () => {
-    if (selectedChars.size === 0) return;
-    const raw = $('charLetterSpacing').value.trim();
-    const v = raw === '' ? null : parseInt(raw, 10);
-    selectedChars.forEach(idx => {
-      if (!perChar[idx]) perChar[idx] = {};
-      if (v === null || isNaN(v)) delete perChar[idx].letterSpacing;
-      else perChar[idx].letterSpacing = v;
-    });
-    renderChars();
-    scheduleRender();
-  });
-
-  $('selectAllBtn').addEventListener('click', () => {
-    const list = getCharList();
-    selectedChars.clear();
-    list.forEach(c => { if (!c.isNewline) selectedChars.add(c.idx); });
-    lastClickIdx = -1;
-    renderChars();
-    updateStyleChecks();
-    refreshCharFontBox();
-    setStatus('已全选 ' + selectedChars.size + ' 个字符', 'ok');
-  });
-
-  $('invertSelBtn').addEventListener('click', () => {
-    const list = getCharList();
-    const newSet = new Set();
-    let total = 0;
-    list.forEach(c => {
-      if (!c.isNewline){
-        total++;
-        if (!selectedChars.has(c.idx)) newSet.add(c.idx);
-      }
-    });
-    const prev = selectedChars.size;
-    selectedChars = newSet;
-    lastClickIdx = -1;
-    renderChars();
-    updateStyleChecks();
-    refreshCharFontBox();
-    setStatus('反向选择：' + prev + ' → ' + selectedChars.size + ' / ' + total, 'ok');
-  });
-
-  $('clearSelBtn').addEventListener('click', () => {
-    selectedChars.clear();
-    lastClickIdx = -1;
-    renderChars();
-    updateStyleChecks();
-    refreshCharFontBox();
-  });
-
-  $('selectRangeBtn').addEventListener('click', () => {
-    const startVal = parseInt($('selStart').value, 10);
-    const endVal = parseInt($('selEnd').value, 10);
-    if (isNaN(startVal) || isNaN(endVal)){
-      setStatus('请输入起始和结束索引（≥0）', 'err');
-      return;
-    }
-    const a = Math.min(startVal, endVal);
-    const b = Math.max(startVal, endVal);
-    const list = getCharList();
-    const valid = new Set();
-    list.forEach(c => { if (!c.isNewline) valid.add(c.idx); });
-    selectedChars.clear();
-    for (let i = a; i <= b; i++){
-      if (valid.has(i)) selectedChars.add(i);
-    }
-    lastClickIdx = b;
-    renderChars();
-    updateStyleChecks();
-    refreshCharFontBox();
-    if (selectedChars.size === 0){
-      setStatus('索引 ' + a + '–' + b + ' 内没有可选中字符', 'err');
-    } else {
-      setStatus('已选中索引 ' + a + '–' + b + '（' + selectedChars.size + ' 个字符）', 'ok');
-    }
-  });
-
-  $('selectSameBtn').addEventListener('click', () => {
-    if (selectedChars.size === 0){
-      setStatus('请先选中至少一个字符', 'err');
-      return;
-    }
-    const list = getCharList();
-    const charValues = new Set();
-    list.forEach(c => {
-      if (!c.isNewline && selectedChars.has(c.idx)) charValues.add(c.ch);
-    });
-    if (charValues.size === 0){
-      setStatus('无法获取选中字符内容', 'err');
-      return;
-    }
-    const before = selectedChars.size;
-    const newSet = new Set(selectedChars);
-    list.forEach(c => {
-      if (!c.isNewline && charValues.has(c.ch)) newSet.add(c.idx);
-    });
-    selectedChars = newSet;
-    renderChars();
-    updateStyleChecks();
-    refreshCharFontBox();
-    const added = newSet.size - before;
-    if (added === 0){
-      setStatus('没有找到更多相同字符', '');
-    } else {
-      const sample = [...charValues].slice(0, 6).join('');
-      setStatus('扩展到相同字符「' + sample + (charValues.size > 6 ? '…' : '') + '」：新增 ' + added + ' 个，共 ' + newSet.size + ' 个', 'ok');
-    }
-  });
-
-  $('clearSelStyle').addEventListener('click', () => {
-    if (selectedChars.size === 0){
-      setStatus('未选中任何字符', 'err');
-      return;
-    }
-    selectedChars.forEach(idx => delete perChar[idx]);
-    renderChars();
-    updateStyleChecks();
-    refreshCharFontBox();
-    scheduleRender();
-  });
-
-  $('clearAllStyle').addEventListener('click', () => {
-    perChar = {};
-    selectedChars.clear();
-    lastClickIdx = -1;
-    defaultStyle = { bold:false, italic:false, underline:false, strikethrough:false };
-    renderChars();
-    updateStyleChecks();
-    refreshCharFontBox();
-    scheduleRender();
-    setStatus('已全部重置', 'ok');
-  });
-
-  $('refreshBtn').addEventListener('click', () => doRender());
-  $('applyBtn').addEventListener('click', doApply);
-
-  $('uploadBgBtn').addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.bin';
-    input.onchange = async () => {
-      const f = input.files[0];
-      if (!f) return;
-      const buf = await f.arrayBuffer();
-      if (buf.byteLength !== FRAME_BYTES){
-        setStatus('文件大小错误：' + buf.byteLength, 'err');
-        return;
-      }
-      let listData = null;
-      try{
-        const r = await fetch('/bgs/list', {cache:'no-store'});
-        if (r.ok) listData = await r.json();
-      } catch(e){}
-      if (!listData){ setStatus('读取背景列表失败', 'err'); return; }
-
-      const storage = await askStorage('背景保存到哪？', listData.sd_active, listData);
-      if (!storage) return;
-
-      let nextIdx = 0;
-      (listData.slots || []).forEach(s => {
-        if (s.storage === storage && s.index >= nextIdx) nextIdx = s.index + 1;
+  if (colorTarget === 'outline' && val === null){
+    if (hasSel){
+      selectedChars.forEach(idx => {
+        if (!perChar[idx]) perChar[idx] = {};
+        perChar[idx].outline = null;
       });
-
-      const noteRaw = prompt('背景备注（可选）', '');
-      if (noteRaw === null) return;
-      const note = (noteRaw || '').slice(0, MAX_NOTE).trim();
-
-      setStatus('正在上传到 ' + storageLabel(storage) + ' 背景 ' + (nextIdx + 1) + '…', 'busy');
-      try{
-        let url = '/bgs/upload/' + nextIdx + '?storage=' + storage;
-        if (note) url += '&note=' + encodeURIComponent(note);
-        const r = await fetch(url, {
-          method: 'POST',
-          headers: {'Content-Type':'application/octet-stream'},
-          body: buf
-        });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-
-        await loadBgsList();
-        renderBgsGrid();
-        setStatus('已上传到 ' + storageLabel(storage) + ' 背景 ' + (nextIdx + 1), 'ok');
-      } catch(e){
-        setStatus('上传失败：' + e.message, 'err');
-      }
-    };
-    input.click();
-  });
-
-  // ★ 绑定重建字体索引按钮
-  $('rebuildFontsBtn').addEventListener('click', async () => {
-    if (!confirm('确定要重新扫描并构建字体索引吗？\n这可能需要几秒钟。')) return;
-
-    const btn = $('rebuildFontsBtn');
-    btn.disabled = true;
-
-    // 借用字体加载遮罩层
-    beginLoadSession('重建字体索引', 1);
-    updateLoadProgress(0, 0, 0);
-
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 30000);
-      const resp = await fetch('/fonts/rebuild', { method: 'POST', signal: ctrl.signal });
-      clearTimeout(t);
-
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const data = await resp.json();
-      if (!data.ok) throw new Error(data.error || '未知错误');
-
-      finishLoadSession();
-      setStatus('字体索引重建成功（' + (data.size || 0) + ' 字节）', 'ok');
-
-      // 重新加载字体列表
-      const fonts = await loadFontsList();
-      if (fonts.length) {
-        fontGroups = buildFontGroups(fonts);
-        rebuildFontFamilySelect();
-        currentFontGroupIdx = 0;
-        currentSize = pickSize(fontGroups[0], 32);
-        rebuildSizeSelect();
-        $('fontFamilySelect').value = '0';
-        scheduleRender();
-      } else {
-         setStatus('重建成功，但未扫描到任何字体', 'err');
-      }
-    } catch (e) {
-      failLoadSession(e.message);
-      setStatus('重建失败：' + e.message, 'err');
-    } finally {
-      btn.disabled = false;
+    } else {
+      outlineColor = null;
     }
-  });
+  } else {
+    const copy = val;
+    if (hasSel){
+      selectedChars.forEach(idx => {
+        if (!perChar[idx]) perChar[idx] = {};
+        if (colorTarget === 'fg') perChar[idx].fg = copy;
+        else if (colorTarget === 'bg') perChar[idx].bg = copy;
+        else perChar[idx].outline = copy;
+      });
+    } else {
+      if (colorTarget === 'fg') fgColor = copy;
+      else if (colorTarget === 'bg') bgColor = copy;
+      else outlineColor = copy;
+    }
+  }
+
+  refreshColorActive();
+  renderChars();
+  scheduleRender();
 }
 
 function getCharList(){
@@ -1709,6 +1569,12 @@ function renderChars(){
         ic.textContent = icon;
         tile.appendChild(ic);
       }
+      if (p.fg !== undefined){
+        const dot = document.createElement('span');
+        dot.className = 'color-dot';
+        dot.style.background = specToCss(p.fg);
+        tile.appendChild(dot);
+      }
       if (p.fontKey) tile.classList.add('has-font');
     }
 
@@ -1734,6 +1600,7 @@ function renderChars(){
       }
       renderChars();
       updateStyleChecks();
+      refreshColorActive();
       refreshCharFontBox();
     });
     strip.appendChild(tile);
@@ -1764,13 +1631,10 @@ function updateStyleChecks(){
 }
 
 function refreshCharFontBox(){
-  const box = $('charFontBox');
   const sel = $('charFontSelect');
   if (selectedChars.size === 0){
-    box.classList.remove('show');
     return;
   }
-  box.classList.add('show');
 
   sel.innerHTML = '<option value="">（使用全局）</option>';
   fontGroups.forEach(g => {
@@ -1796,10 +1660,807 @@ function refreshCharFontBox(){
   const lsInput = $('charLetterSpacing');
   const curLs = ov && ov.letterSpacing !== undefined ? ov.letterSpacing : '';
   lsInput.value = curLs === '' ? '' : String(curLs);
-  lsInput.placeholder = '留空跟随全局';
+  lsInput.placeholder = '跟随全局';
+}
+
+async function loadBgsList(){
+  try{
+    const r = await fetch('/bgs/list', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    bgsList = d.slots || [];
+    bgsSdActive = !!d.sd_active;
+    return d;
+  } catch(e){
+    bgsList = [];
+    bgsSdActive = false;
+    return null;
+  }
+}
+
+function storageLabel(s){ return s === 'sd' ? 'SD' : 'Flash'; }
+
+function makeThumbFrom4bpp(buf, tw, th){
+  const img = new ImageData(tw, th);
+  const d = img.data;
+  const rowBytes = tw / 2;
+  for (let y = 0; y < th; y++){
+    const rowBase = y * rowBytes;
+    const pixBase = y * tw * 4;
+    for (let xb = 0; xb < rowBytes; xb++){
+      const b = buf[rowBase + xb];
+      const hi = (b >> 4) & 0xF;
+      const lo = b & 0xF;
+
+      const c0 = hi * 17;
+      const c1 = lo * 17;
+
+      const o0 = pixBase + xb * 8;
+      const o1 = o0 + 4;
+      d[o0]=c0; d[o0+1]=c0; d[o0+2]=c0; d[o0+3]=255;
+      d[o1]=c1; d[o1+1]=c1; d[o1+2]=c1; d[o1+3]=255;
+    }
+  }
+  return img;
+}
+
+async function loadBgThumb(slot, canvas){
+  const key = slot.storage + ':' + slot.index;
+  if (bgThumbCache[key]){
+    canvas.width = THUMB_W;
+    canvas.height = THUMB_H;
+    canvas.getContext('2d').putImageData(bgThumbCache[key], 0, 0);
+    canvas.style.width = '100%';
+    canvas.classList.remove('placeholder');
+    return;
+  }
+  try{
+    const url = '/bgs/thumb/' + slot.index + '?storage=' + slot.storage;
+    const r = await fetch(url, {cache:'force-cache'});
+    if (!r.ok) return;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (buf.length !== THUMB_BYTES) return;
+    const imgData = makeThumbFrom4bpp(buf, THUMB_W, THUMB_H);
+    bgThumbCache[key] = imgData;
+    canvas.width = THUMB_W;
+    canvas.height = THUMB_H;
+    canvas.getContext('2d').putImageData(imgData, 0, 0);
+    canvas.style.width = '100%';
+    canvas.classList.remove('placeholder');
+  } catch(e){
+    console.warn('bg thumb fail', e);
+  }
+}
+
+function renderBgsGrid(){
+  const grid = $('bgsGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  const noneCell = document.createElement('div');
+  noneCell.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;aspect-ratio:5/3;border-radius:4px;border:1px solid '+(selectedBgStorage === null ? 'var(--focus)' : 'var(--line)')+';background:var(--paper);cursor:pointer;font-size:11px;color:var(--muted);';
+  noneCell.textContent = '无背景';
+  noneCell.addEventListener('click', () => selectBg(null, -1));
+  grid.appendChild(noneCell);
+
+  if (!bgsList.length){
+    const hint = document.createElement('div');
+    hint.style.cssText = 'grid-column:2/-1;color:var(--subtle);font-size:11px;padding:8px;line-height:1.4;';
+    hint.textContent = '暂无背景图，点下方"上传新背景"添加。';
+    grid.appendChild(hint);
+    return;
+  }
+
+  bgsList.forEach(slot => {
+    const isSel = (selectedBgStorage === slot.storage && selectedBgIndex === slot.index);
+    const cell = document.createElement('div');
+    cell.style.cssText = 'position:relative;display:flex;flex-direction:column;gap:2px;cursor:pointer;background:var(--paper);border-radius:4px;padding:2px;border:1px solid '+(isSel ? 'var(--focus)' : 'var(--line)')+';';
+
+    const cvs = document.createElement('canvas');
+    cvs.className = 'bg-thumb placeholder';
+    cvs.width = THUMB_W;
+    cvs.height = THUMB_H;
+    cvs.style.cssText = 'width:100%;aspect-ratio:5/3;border-radius:2px;background:#000;image-rendering:pixelated;';
+    cvs.dataset.slot = String(slot.index);
+    cvs.dataset.storage = slot.storage;
+    cvs.dataset.note = slot.note || '';
+    cell.appendChild(cvs);
+
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:9px;text-align:center;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    lbl.innerHTML = '[' + storageLabel(slot.storage) + '] ' + (slot.index + 1);
+    cell.appendChild(lbl);
+
+    if (slot.note){
+      const note = document.createElement('div');
+      note.style.cssText = 'font-size:9px;text-align:center;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      note.textContent = slot.note;
+      note.title = slot.note;
+      cell.appendChild(note);
+    }
+
+    if (thumbObserver){
+      thumbObserver.observe(cvs);
+    } else {
+      enqueueBgThumb(cvs);
+    }
+    cell.addEventListener('click', () => selectBg(slot.storage, slot.index));
+    grid.appendChild(cell);
+  });
+}
+
+function updateBgsGridActive(){
+  const grid = $('bgsGrid');
+  if (!grid) return;
+  const none = grid.firstChild;
+  if (none) none.style.borderColor = (selectedBgStorage === null ? 'var(--focus)' : 'var(--line)');
+
+  Array.from(grid.children).forEach((cell, i) => {
+    if (i === 0) return;
+    const slot = bgsList[i - 1];
+    if (slot) {
+      const isSel = (slot.storage === selectedBgStorage && slot.index === selectedBgIndex);
+      cell.style.borderColor = (isSel ? 'var(--focus)' : 'var(--line)');
+    }
+  });
+}
+
+async function selectBg(storage, index){
+  selectedBgStorage = storage;
+  selectedBgIndex = index;
+  updateBgsGridActive();
+  updateBgHint();
+
+  if (storage === null || index < 0){
+    bgImageBuf = null;
+    bgImageSlot = -1;
+    bgImageStorage = null;
+    scheduleRender();
+    return;
+  }
+
+  if (bgImageSlot === index && bgImageStorage === storage && bgImageBuf){
+    scheduleRender();
+    return;
+  }
+
+  try {
+    const r = await fetch('/bgs/get/' + index + '?storage=' + storage, {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const bin = new Uint8Array(await r.arrayBuffer());
+    if (bin.length !== FRAME_BYTES) throw new Error('大小异常');
+    bgImageBuf = binToIndices(bin);
+    bgImageSlot = index;
+    bgImageStorage = storage;
+    setStatus('背景 ' + storageLabel(storage) + ' ' + (index + 1) + ' 已加载', 'ok');
+    scheduleRender();
+  } catch(e){
+    bgImageBuf = null;
+    bgImageSlot = -1;
+    setStatus('加载背景失败：' + e.message, 'err');
+  }
+}
+
+function updateBgHint(){
+  const hint = $('bgHint');
+  if (!hint) return;
+  if (selectedBgStorage === null){
+    hint.textContent = '当前：无背景（使用背景色填充）。';
+    return;
+  }
+  const slot = bgsList.find(s => s.index === selectedBgIndex && s.storage === selectedBgStorage) || {};
+  const note = slot.note || '';
+  let msg = '当前背景：' + storageLabel(selectedBgStorage) + ' 槽位 ' + (selectedBgIndex + 1);
+  if (note) msg += '（' + note + '）';
+  hint.textContent = msg;
+}
+
+async function editBgNote(slot){
+  const cur = slot.note || '';
+  const val = prompt('修改 ' + storageLabel(slot.storage) + ' 背景 ' +
+    (slot.index + 1) + ' 的备注（留空清除）', cur);
+  if (val === null) return;
+  const note = val.slice(0, MAX_NOTE).trim();
+  try{
+    const r = await fetch('/bgs/note/' + slot.index + '?storage=' + slot.storage, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({note})
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    await loadBgsList();
+    renderBgsGrid();
+    updateBgHint();
+    setStatus('备注已保存', 'ok');
+  } catch(e){
+    setStatus('保存备注失败：' + e.message, 'err');
+  }
+}
+
+async function deleteBg(slot){
+  if (!confirm('删除 ' + storageLabel(slot.storage) + ' 背景 ' +
+    (slot.index + 1) + ' 及备注？')) return;
+  try{
+    const r = await fetch('/bgs/delete/' + slot.index + '?storage=' + slot.storage, {method:'POST'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (selectedBgStorage === slot.storage && selectedBgIndex === slot.index){
+      selectedBgStorage = null;
+      selectedBgIndex = -1;
+      bgImageBuf = null;
+      bgImageSlot = -1;
+      bgImageStorage = null;
+    }
+    const key = slot.storage + ':' + slot.index;
+    delete bgThumbCache[key];
+    await loadBgsList();
+    renderBgsGrid();
+    updateBgHint();
+    scheduleRender();
+    setStatus('背景已删除', 'ok');
+  } catch(e){
+    setStatus('删除失败：' + e.message, 'err');
+  }
+}
+
+function askStorage(title, sdActive, info){
+  return new Promise(resolve => {
+    if (!sdActive){
+      if (confirm(title + '\n\n保存到 Flash？（SD 未挂载）')) resolve('flash');
+      else resolve(null);
+      return;
+    }
+    const sdFree = info && info.free_sd != null
+      ? 'SD 剩余 ' + (info.free_sd/1024).toFixed(0) + ' KB'
+      : 'SD';
+    const flashFree = info && info.free_flash != null
+      ? 'Flash 剩余 ' + (info.free_flash/1024).toFixed(0) + ' KB'
+      : 'Flash';
+    const ans = prompt(title + '\n\n1 = SD（' + sdFree + '）\n2 = Flash（' +
+      flashFree + '）\n0 = 取消', '1');
+    if (ans === '1') resolve('sd');
+    else if (ans === '2') resolve('flash');
+    else resolve(null);
+  });
+}
+
+function scheduleRender(){
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(doRender, 180);
+}
+
+async function doRender(){
+  if (rendering){
+    pendingRender = true;
+    return;
+  }
+  rendering = true;
+  try {
+    setStatus('渲染预览中…', 'busy');
+
+    const curFont = getCurrentFontInfo();
+    if (!curFont) throw new Error('未选择字体');
+    const defaultFont = await loadFontByKey(fontKey(curFont));
+    if (!defaultFont) throw new Error('字体加载失败');
+
+    const text = $('textInput').value;
+    const charFontMap = {};
+    for (const [idx, ov] of Object.entries(perChar)){
+      if (ov.fontKey){
+        try {
+          const cf = await loadFontByKey(ov.fontKey);
+          charFontMap[parseInt(idx)] = cf;
+        } catch(e){}
+      }
+    }
+
+    await preloadFont(defaultFont, text);
+    for (const [idxStr, cf] of Object.entries(charFontMap)){
+      const ch = charAtVisual(text, parseInt(idxStr));
+      if (ch) await preloadFont(cf, ch);
+    }
+
+    const innerW = (direction === 90 || direction === 270) ? H : W;
+    const innerH = (direction === 90 || direction === 270) ? W : H;
+
+    const opts = {
+      lineHeight: Math.max(0, parseFloat($('lineHeight').value) || 0),
+      letterSpacing: parseInt($('letterSpacing').value, 10) || 0,
+      lineExtras,
+      align: $('alignSelect').value,
+      valign: $('valignSelect').value,
+      marginTop: parseInt($('marginTop').value) || 0,
+      marginBottom: parseInt($('marginBottom').value) || 0,
+      marginLeft: parseInt($('marginLeft').value) || 0,
+      marginRight: parseInt($('marginRight').value) || 0,
+    };
+
+    const textLayer = layoutTextLayer(text, charFontMap, defaultFont, innerW, innerH, opts);
+    const rot = rotateBuf(textLayer, innerW, innerH, direction);
+    const bgLayer = makeBackgroundLayer();
+
+    const outIdx = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++){
+      outIdx[i] = (rot.buf[i] === 255) ? bgLayer[i] : rot.buf[i];
+    }
+
+    lastBin = to4bpp(outIdx, W, H);
+    renderBinToCanvas(lastBin, $('previewCanvas'));
+    $('applyBtn').disabled = false;
+    setStatus('预览已生成（' + lastBin.length + ' 字节）', 'ok');
+  } catch(e){
+    setStatus('渲染失败：' + e.message, 'err');
+    $('applyBtn').disabled = true;
+    lastBin = null;
+  } finally {
+    rendering = false;
+    if (pendingRender){
+      pendingRender = false;
+      setTimeout(doRender, 0);
+    }
+  }
+}
+
+function makeBackgroundLayer(){
+  const bg = new Uint8Array(W * H);
+  if (bgImageBuf && bgImageBuf.length === W * H){
+    bg.set(bgImageBuf);
+  } else {
+    for (let i = 0; i < W * H; i++) bg[i] = bgColor;
+  }
+  return bg;
+}
+
+async function doApply(){
+  const perCharPayload = {};
+
+  const fontKeySet = new Set();
+  for (const style of Object.values(perChar)){
+    if (style.fontKey) fontKeySet.add(style.fontKey);
+  }
+  const MAX_FONT_KINDS = 2;
+  let allowedKeys = null;
+  if (fontKeySet.size > MAX_FONT_KINDS){
+    const keys = [...fontKeySet].slice(0, MAX_FONT_KINDS);
+    allowedKeys = new Set(keys);
+  }
+
+  for (const [idx, style] of Object.entries(perChar)){
+    const item = {};
+    if (style.fg !== undefined) item.fg = specToJson(style.fg);
+    if (style.bg !== undefined) item.bg = specToJson(style.bg);
+    if (style.outline !== undefined) {
+      item.outline = style.outline === null ? null : specToJson(style.outline);
+    }
+    if (style.bold !== undefined) item.bold = !!style.bold;
+    if (style.italic !== undefined) item.italic = !!style.italic;
+    if (style.underline !== undefined) item.underline = !!style.underline;
+    if (style.strikethrough !== undefined) item.strikethrough = !!style.strikethrough;
+    if (style.letterSpacing !== undefined){
+      const v = parseInt(style.letterSpacing, 10);
+      if (!isNaN(v)) item.letterSpacing = v;
+    }
+    if (style.fontKey){
+      if (!(allowedKeys && !allowedKeys.has(style.fontKey))){
+        const parts = style.fontKey.split(':');
+        const sizeStr = parts[parts.length - 1];
+        const storage = parts[0];
+        const family = parts.slice(1, parts.length - 1).join(':');
+        const size = parseInt(sizeStr);
+        const g = fontGroups.find(x => x.storage === storage && x.family === family);
+        if (g && g.bySize[size]){
+          const paths = buildFontPaths(g.bySize[size]);
+          if (paths) item.font_paths = paths;
+        }
+      }
+    }
+    perCharPayload[String(idx)] = item;
+  }
+
+  const globalLetterSpacing = parseInt($('letterSpacing').value, 10) || 0;
+
+  const defaultStylePayload = {
+    fg: specToJson(fgColor),
+    bg: specToJson(bgColor),
+    outline: outlineColor === null ? null : specToJson(outlineColor),
+    bold: !!defaultStyle.bold,
+    italic: !!defaultStyle.italic,
+    underline: !!defaultStyle.underline,
+    strikethrough: !!defaultStyle.strikethrough,
+    letter_spacing: globalLetterSpacing,
+  };
+
+  const f = getCurrentFontInfo();
+  const defaultFontPaths = f ? buildFontPaths(f) : null;
+
+  if (!defaultFontPaths || !defaultFontPaths.length){
+    setStatus('错误：无法构造字体路径。', 'err');
+    return;
+  }
+
+  const lineExtrasPayload = Object.keys(lineExtras).length > 0
+    ? { ...lineExtras } : null;
+
+  const payload = {
+    text: $('textInput').value,
+    size: currentSize,
+    direction: direction,
+    per_char: perCharPayload,
+    default_style: defaultStylePayload,
+    align: $('alignSelect').value,
+    valign: $('valignSelect').value,
+    line_height: Math.max(0, parseFloat($('lineHeight').value) || 0),
+    line_extras: lineExtrasPayload,
+    margin_top: parseInt($('marginTop').value) || 0,
+    margin_bottom: parseInt($('marginBottom').value) || 0,
+    margin_left: parseInt($('marginLeft').value) || 0,
+    margin_right: parseInt($('marginRight').value) || 0,
+    stream: true,
+    font_paths: defaultFontPaths,
+    background: (selectedBgIndex >= 0 && selectedBgStorage)
+      ? (selectedBgStorage === 'sd'
+          ? ('/sd/bgs/' + selectedBgIndex + '.bin')
+          : ('/bgs/' + selectedBgIndex + '.bin'))
+      : null,
+  };
+
+  $('applyBtn').disabled = true;
+  setStatus('设备渲染中，请稍候…', 'busy');
+
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 600000);
+    const resp = await fetch('/text/render', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+      signal: ctrl.signal
+    });
+    clearTimeout(t);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+    if (data.started) {
+      setStatus('已发送渲染指令 ✓  屏幕约 5~15 秒后更新，请查看屏幕确认。', 'ok');
+    } else if (data.ok) {
+      setStatus('已显示到屏幕 ✓', 'ok');
+    } else {
+      throw new Error(data.error || '未知错误');
+    }
+  } catch(e){
+    if (e.name === 'AbortError'){
+      setStatus('请求超时（>10 分钟）。屏幕可能已显示成功，请查看屏幕确认。', 'err');
+    } else {
+      setStatus('上传失败：' + e.message, 'err');
+    }
+  } finally {
+    $('applyBtn').disabled = !lastBin;
+  }
+}
+
+function bindEvents(){
+  document.querySelectorAll('.color-mode button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.clear === '1'){
+        outlineColor = null;
+        if (selectedChars.size > 0){
+          selectedChars.forEach(idx => {
+            if (!perChar[idx]) perChar[idx] = {};
+            perChar[idx].outline = null;
+          });
+        }
+        colorTarget = 'outline';
+        document.querySelectorAll('.color-mode button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        refreshColorActive();
+        renderChars();
+        scheduleRender();
+        return;
+      }
+      colorTarget = btn.dataset.target;
+      document.querySelectorAll('.color-mode button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      refreshColorActive();
+    });
+  });
+
+  $('textInput').addEventListener('input', () => {
+    const t = $('textInput').value;
+    let n = 0;
+    for (let i = 0; i < t.length; i++) n++;
+    $('charCount').textContent = n;
+    selectedChars.clear();
+    perChar = {};
+    lastClickIdx = -1;
+
+    const lineCount = t.split('\n').length;
+    for (const k in lineExtras){
+      if (parseInt(k, 10) >= lineCount) delete lineExtras[k];
+    }
+
+    renderChars();
+    updateStyleChecks();
+    refreshCharFontBox();
+    renderLineSettings();
+    scheduleRender();
+  });
+
+  $('fontFamilySelect').addEventListener('change', () => {
+    currentFontGroupIdx = parseInt($('fontFamilySelect').value) || 0;
+    rebuildSizeSelect();
+    scheduleRender();
+  });
+
+  $('sizeSelect').addEventListener('change', () => {
+    currentSize = parseInt($('sizeSelect').value);
+    scheduleRender();
+  });
+
+  $('directionSelect').addEventListener('change', () => {
+    direction = parseInt($('directionSelect').value);
+    updateBgHint();
+    scheduleRender();
+  });
+
+  ['lineHeight','letterSpacing',
+   'alignSelect','valignSelect','marginTop','marginBottom','marginLeft','marginRight']
+    .forEach(id => {
+      $(id).addEventListener('input', scheduleRender);
+      $(id).addEventListener('change', scheduleRender);
+    });
+
+  const STYLE_FIELD_MAP = {
+    boldCheck: 'bold',
+    italicCheck: 'italic',
+    underlineCheck: 'underline',
+    strikeCheck: 'strikethrough'
+  };
+  ['boldCheck','italicCheck','underlineCheck','strikeCheck'].forEach(id => {
+    $(id).addEventListener('change', () => {
+      const field = STYLE_FIELD_MAP[id];
+      const val = $(id).checked;
+      if (selectedChars.size > 0){
+        selectedChars.forEach(idx => {
+          if (!perChar[idx]) perChar[idx] = {};
+          perChar[idx][field] = val;
+        });
+      } else {
+        defaultStyle[field] = val;
+      }
+      renderChars();
+      refreshColorActive();
+      scheduleRender();
+    });
+  });
+
+  $('charFontSelect').addEventListener('change', () => {
+    if (selectedChars.size === 0) return;
+    const key = $('charFontSelect').value;
+    selectedChars.forEach(idx => {
+      if (!perChar[idx]) perChar[idx] = {};
+      if (key) perChar[idx].fontKey = key;
+      else delete perChar[idx].fontKey;
+    });
+    renderChars();
+    scheduleRender();
+  });
+
+  $('charLetterSpacing').addEventListener('input', () => {
+    if (selectedChars.size === 0) return;
+    const raw = $('charLetterSpacing').value.trim();
+    const v = raw === '' ? null : parseInt(raw, 10);
+    selectedChars.forEach(idx => {
+      if (!perChar[idx]) perChar[idx] = {};
+      if (v === null || isNaN(v)) delete perChar[idx].letterSpacing;
+      else perChar[idx].letterSpacing = v;
+    });
+    renderChars();
+    scheduleRender();
+  });
+
+  $('selectAllBtn').addEventListener('click', () => {
+    const list = getCharList();
+    selectedChars.clear();
+    list.forEach(c => { if (!c.isNewline) selectedChars.add(c.idx); });
+    lastClickIdx = -1;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    setStatus('已全选 ' + selectedChars.size + ' 个字符', 'ok');
+  });
+
+  $('invertSelBtn').addEventListener('click', () => {
+    const list = getCharList();
+    const newSet = new Set();
+    let total = 0;
+    list.forEach(c => {
+      if (!c.isNewline){
+        total++;
+        if (!selectedChars.has(c.idx)) newSet.add(c.idx);
+      }
+    });
+    const prev = selectedChars.size;
+    selectedChars = newSet;
+    lastClickIdx = -1;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    setStatus('反向选择：' + prev + ' → ' + selectedChars.size + ' / ' + total, 'ok');
+  });
+
+  $('clearSelBtn').addEventListener('click', () => {
+    selectedChars.clear();
+    lastClickIdx = -1;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+  });
+
+  $('selectRangeBtn').addEventListener('click', () => {
+    const startVal = parseInt($('selStart').value, 10);
+    const endVal = parseInt($('selEnd').value, 10);
+    if (isNaN(startVal) || isNaN(endVal)){
+      setStatus('请输入起始和结束索引（≥0）', 'err');
+      return;
+    }
+    const a = Math.min(startVal, endVal);
+    const b = Math.max(startVal, endVal);
+    const list = getCharList();
+    const valid = new Set();
+    list.forEach(c => { if (!c.isNewline) valid.add(c.idx); });
+    selectedChars.clear();
+    for (let i = a; i <= b; i++){
+      if (valid.has(i)) selectedChars.add(i);
+    }
+    lastClickIdx = b;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    if (selectedChars.size === 0){
+      setStatus('索引 ' + a + '–' + b + ' 内没有可选中字符', 'err');
+    } else {
+      setStatus('已选中索引 ' + a + '–' + b + '（' + selectedChars.size + ' 个字符）', 'ok');
+    }
+  });
+
+  $('selectSameBtn').addEventListener('click', () => {
+    if (selectedChars.size === 0){
+      setStatus('请先选中至少一个字符', 'err');
+      return;
+    }
+    const list = getCharList();
+    const charValues = new Set();
+    list.forEach(c => {
+      if (!c.isNewline && selectedChars.has(c.idx)) charValues.add(c.ch);
+    });
+    if (charValues.size === 0){
+      setStatus('无法获取选中字符内容', 'err');
+      return;
+    }
+    const before = selectedChars.size;
+    const newSet = new Set(selectedChars);
+    list.forEach(c => {
+      if (!c.isNewline && charValues.has(c.ch)) newSet.add(c.idx);
+    });
+    selectedChars = newSet;
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    const added = newSet.size - before;
+    if (added === 0){
+      setStatus('没有找到更多相同字符', '');
+    } else {
+      const sample = [...charValues].slice(0, 6).join('');
+      setStatus('扩展到相同字符「' + sample + (charValues.size > 6 ? '…' : '') + '」：新增 ' + added + ' 个，共 ' + newSet.size + ' 个', 'ok');
+    }
+  });
+
+  $('clearSelStyle').addEventListener('click', () => {
+    if (selectedChars.size === 0){
+      setStatus('未选中任何字符', 'err');
+      return;
+    }
+    selectedChars.forEach(idx => delete perChar[idx]);
+    renderChars();
+    updateStyleChecks();
+    refreshColorActive();
+    refreshCharFontBox();
+    scheduleRender();
+  });
+
+  $('clearAllStyle').addEventListener('click', () => {
+    perChar = {};
+    selectedChars.clear();
+    lastClickIdx = -1;
+    defaultStyle = { bold:false, italic:false, underline:false, strikethrough:false };
+    fgColor = 0;
+    bgColor = 15;
+    outlineColor = null;
+    colorTarget = 'fg';
+    document.querySelectorAll('.color-mode button').forEach(b => b.classList.remove('active'));
+    document.querySelector('.color-mode button[data-target="fg"]').classList.add('active');
+    refreshColorActive();
+    renderChars();
+    updateStyleChecks();
+    refreshCharFontBox();
+    scheduleRender();
+    setStatus('已全部重置', 'ok');
+  });
+
+  $('refreshBtn').addEventListener('click', () => doRender());
+  $('applyBtn').addEventListener('click', doApply);
+
+  $('uploadBgBtn').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.bin';
+    input.onchange = async () => {
+      const f = input.files[0];
+      if (!f) return;
+      const buf = await f.arrayBuffer();
+      if (buf.byteLength !== FRAME_BYTES){
+        setStatus('文件大小错误：' + buf.byteLength, 'err');
+        return;
+      }
+      let listData = null;
+      try{
+        const r = await fetch('/bgs/list', {cache:'no-store'});
+        if (r.ok) listData = await r.json();
+      } catch(e){}
+      if (!listData){ setStatus('读取背景列表失败', 'err'); return; }
+
+      const storage = await askStorage('背景保存到哪？', listData.sd_active, listData);
+      if (!storage) return;
+
+      let nextIdx = 0;
+      (listData.slots || []).forEach(s => {
+        if (s.storage === storage && s.index >= nextIdx) nextIdx = s.index + 1;
+      });
+
+      const noteRaw = prompt('背景备注（可选）', '');
+      if (noteRaw === null) return;
+      const note = (noteRaw || '').slice(0, MAX_NOTE).trim();
+
+      setStatus('正在上传到 ' + storageLabel(storage) + ' 背景 ' + (nextIdx + 1) + '…', 'busy');
+      try{
+        let url = '/bgs/upload/' + nextIdx + '?storage=' + storage;
+        if (note) url += '&note=' + encodeURIComponent(note);
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type':'application/octet-stream'},
+          body: buf
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+
+        try {
+          const thumbBuf = generateThumb(new Uint8Array(buf));
+          await fetch('/bgs/thumb_upload/' + nextIdx + '?storage=' + storage, {
+            method: 'POST',
+            headers: {'Content-Type':'application/octet-stream'},
+            body: thumbBuf
+          });
+        } catch(te){
+          console.warn('thumb upload fail', te);
+        }
+
+        await loadBgsList();
+        renderBgsGrid();
+        setStatus('已上传到 ' + storageLabel(storage) + ' 背景 ' + (nextIdx + 1), 'ok');
+      } catch(e){
+        setStatus('上传失败：' + e.message, 'err');
+      }
+    };
+    input.click();
+  });
 }
 
 async function init(){
+  buildColorPickers();
+  refreshColorActive();
+
   const fonts = await loadFontsList();
   if (!fonts.length){
     setStatus('未检测到字模。请把字模放到 /www/fonts/ 或 /sd/fonts/', 'err');

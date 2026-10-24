@@ -1,5 +1,11 @@
 # build_font_index.py — 一次性扫描字体目录，生成 /fonts_index.json
-# 修改点：路径从 /sd/e6/fonts 统一为 /sd/fonts
+#
+# REPL 用法：
+#   >>> import build_font_index
+#   >>> build_font_index.build()
+#
+# 添加新字体后重新跑一次即可。
+# web_server.start_server() 启动时会检查此文件是否存在。
 
 import os
 import json
@@ -10,7 +16,7 @@ except ImportError:
 
 INDEX_PATH = '/fonts_index.json'
 FLASH_DIR = '/www/fonts'
-SD_DIR = '/sd/fonts'  # <--- 修改了这里
+SD_DIR = '/sd/fonts'
 
 
 def _collect(gc_now=True):
