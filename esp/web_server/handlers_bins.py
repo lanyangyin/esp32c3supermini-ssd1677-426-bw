@@ -29,20 +29,18 @@ def _display_bin_file(path):
     """读取 4bpp BIN 文件并流式显示到屏幕"""
     try:
         epd.init()
-        epd.clear(15)  # 4bpp 下 15 为白色
+        epd.begin_frame()
 
         with open(path, "rb") as f:
             chunk_size = 4096
-            offset = 0
             while True:
                 chunk = f.read(chunk_size)
                 if not chunk:
                     break
-                epd._display.buffer[offset:offset + len(chunk)] = chunk
-                offset += len(chunk)
+                epd.write_chunk(chunk)
                 gc.collect()
 
-        epd.show()
+        epd.end_frame()
         epd.sleep()
         return (True, "")
     except Exception as e:

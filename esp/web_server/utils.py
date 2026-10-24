@@ -46,27 +46,21 @@ MIME_MAP = {
 # 适配器：对接 text_renderer 和 epd
 # ============================================================
 class EpdStreamAdapter:
-    """适配器，把 text_renderer 的流式写入对接给 epd.py"""
-
+    """将 text_renderer 的流式输出对接给 epd（直接发 SPI）"""
     def __init__(self, epd_mod):
         self.epd = epd_mod
-        self._buf = None
-        self._pos = 0
 
     def init(self):
         self.epd.init()
 
     def begin_frame(self):
-        self._buf = self.epd._display.buffer
-        self._pos = 0
+        self.epd.begin_frame()
 
     def write_chunk(self, chunk):
-        n = len(chunk)
-        self._buf[self._pos:self._pos + n] = chunk
-        self._pos += n
+        self.epd.write_chunk(chunk)
 
     def end_frame(self):
-        self.epd.show()
+        self.epd.end_frame()
 
     def sleep(self):
         self.epd.sleep()
