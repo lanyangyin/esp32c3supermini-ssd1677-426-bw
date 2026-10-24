@@ -4,6 +4,7 @@ import socket
 import gc
 import os
 import network
+import time
 
 from .utils import (
     _ensure_dir,
@@ -169,7 +170,7 @@ def _serve_static(conn, headers):
 # 主服务启动
 # ============================================================
 
-def start_server():
+def start_server(bind_ip="0.0.0.0"):
     # 确保 Flash 上的基础目录存在
     for d in ("/bins", "/bgs"):
         _ensure_dir(d)
@@ -193,32 +194,32 @@ def start_server():
         print('build_font_index.build()')
 
     # 等待网络栈完全就绪
-    import time
-    time.sleep(1)
+    time.sleep(1.5)
 
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    # 绑定端口，带重试机制
+    print("[WEB] 绑定目标 IP:", bind_ip)
+
+    # ---------- 重试绑定 ----------
     bound = False
-    for attempt in range(1, 11):
+    for attempt in range(1, 6):
         try:
-            # 直接用元组绑定，绕开 getaddrinfo
-            s.bind(("0.0.0.0", 80))
+            s.bind((bind_ip, 80))
             s.listen(5)
-            print("[WEB] Socket bound to port 80 (attempt %d)" % attempt)
+            print("[WEB] Socket bound to %s:80 (attempt %d)" % (bind_ip, attempt))
             bound = True
             break
         except OSError as e:
             print("[WEB] bind attempt %d failed: %s" % (attempt, e))
-            if attempt < 10:
+            if attempt < 5:
                 time.sleep(1)
 
     if not bound:
-        print("[WEB] FATAL: Could not bind to port 80 after 10 attempts")
+        print("[WEB] FATAL: Could not bind to port 80 after 5 attempts")
         return
 
-    # 打印网络信息
+    # 打印访问地址
     try:
         ap = network.WLAN(network.AP_IF)
         if ap.active():
@@ -257,7 +258,7 @@ def start_server():
             elif headers.startswith(b"POST /boot/bin"):
                 _handle_boot_bin_set(conn, headers, body_prefix)
 
-            # 缩略图上传（必须放在 /bins/upload 之前）
+            # 缩略图上传
             elif headers.startswith(b"POST /bins/thumb_upload/"):
                 slot = _parse_int_after(headers, b"/bins/thumb_upload/")
                 if slot is None:

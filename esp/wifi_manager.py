@@ -21,32 +21,24 @@ def save_config(cfg):
         json.dump(cfg, f)
 
 
-def start_ap(cfg=None, max_clients=4):
+def start_ap(cfg=None):
     if cfg is None:
         cfg = load_config()
     ap_cfg = cfg.get("ap", {})
     ap = network.WLAN(network.AP_IF)
 
-    ap.active(True)
-    try:
-        ap.config(
-            essid=ap_cfg.get("essid", AP_SSID),
-            password=ap_cfg.get("password", AP_PASSWORD),
-            authmode=network.AUTH_WPA_WPA2_PSK,
-            max_clients=max_clients,  # ★ 限制连接数，节省内存
-            channel=1  # ★ 固定信道
-        )
-    except Exception as e:
-        print(f"[AP] config 失败: {e}")
-        try:
-            ap.config(essid=ap_cfg.get("essid", AP_SSID), password=ap_cfg.get("password", AP_PASSWORD))
-        except:
-            pass
+    if not ap.active():
+        ap.active(True)
+        # ⚠️ 关键：ESP-IDF 网络子系统初始化需要时间，等待 3 秒
+        time.sleep(3.0)
 
-    try:
-        ap.config(txpower=10)
-    except:
-        pass
+    ap.config(essid=ap_cfg.get("essid", AP_SSID),
+              password=ap_cfg.get("password", AP_PASSWORD),
+              authmode=network.AUTH_WPA_WPA2_PSK)
+    time.sleep(1.0)
+
+    # ⚠️ 注意：不要调用 ap.config(txpower=10)，它可能会干扰 lwIP 路由状态
+
     print(f"[AP] http://{ap.ifconfig()[0]}")
     return ap
 
@@ -67,43 +59,30 @@ def scan_networks():
     return result
 
 
-def _sta_cleanup(sta):
-    try:
-        if sta.isconnected():
-            sta.disconnect()
-            for _ in range(30):
-                if not sta.isconnected():
-                    break
-                time.sleep(0.1)
-    except Exception:
-        pass
-    try:
-        sta.disconnect()
-    except Exception:
-        pass
-    time.sleep(0.5)
-
-
 def connect_sta(ssid, password, timeout=25, retries=3):
+    """
+    ⚠️ 当前固件下，STA 连接失败后启动 AP 可能触发 lwIP 崩溃，main.py 默认不调用。
+    """
     sta = network.WLAN(network.STA_IF)
     if not sta.active():
         sta.active(True)
         time.sleep(0.5)
 
-    _sta_cleanup(sta)
+    try:
+        if sta.isconnected():
+            sta.disconnect()
+            time.sleep(0.5)
+    except Exception:
+        pass
 
     for attempt in range(1, retries + 1):
         print(f"[STA] 尝试连接 {ssid}（第 {attempt}/{retries} 次）...")
         try:
             sta.connect(ssid, password)
-        except OSError as e:
-            print(f"[STA] 连接异常: {e}")
-            _sta_cleanup(sta)
-            time.sleep(1.5)
-            continue
         except Exception as e:
             print(f"[STA] 连接异常: {e}")
-            return False
+            time.sleep(1.5)
+            continue
 
         start = time.time()
         while not sta.isconnected():
@@ -121,30 +100,9 @@ def connect_sta(ssid, password, timeout=25, retries=3):
             print(f"[STA] 已连接 {ssid}, http://{sta.ifconfig()[0]}")
             return True
 
-        _sta_cleanup(sta)
         time.sleep(1)
 
     return False
-
-
-def _scan_visible_ssids():
-    try:
-        sta = network.WLAN(network.STA_IF)
-        if not sta.active():
-            sta.active(True)
-            time.sleep(0.5)
-        t0 = time.time()
-        visible = set()
-        for net in sta.scan():
-            ssid = net[0].decode() if net[0] else ""
-            if ssid:
-                visible.add(ssid)
-        elapsed = time.time() - t0
-        print(f"[STA] 扫描完成（{elapsed:.1f}s），发现 {len(visible)} 个网络")
-        return visible
-    except Exception as e:
-        print(f"[STA] 扫描失败: {e}")
-        return None
 
 
 def auto_connect(force=False):
@@ -156,26 +114,7 @@ def auto_connect(force=False):
         print("[STA] 无已保存网络")
         return False
 
-    if force:
-        candidates = networks
-    else:
-        visible = _scan_visible_ssids()
-        if visible is None:
-            print("[STA] 退化为逐个尝试")
-            candidates = networks
-        else:
-            candidates = []
-            for n in networks:
-                ssid = n.get("ssid")
-                if ssid in visible:
-                    candidates.append(n)
-                else:
-                    print(f"[STA] 跳过 {ssid}（不在扫描范围内）")
-            if not candidates:
-                print("[STA] 已知网络均不在范围内")
-                return False
-
-    for net in candidates:
+    for net in networks:
         ssid = net.get("ssid")
         pwd = net.get("password", "")
         if not ssid:
