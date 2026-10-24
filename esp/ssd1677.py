@@ -116,9 +116,30 @@ class SSD1677:
         self.dc(1)
 
     def write_chunk(self, chunk):
+        """接收 4bpp（16 级灰度）数据，转成 SSD1677 需要的 2bpp（4 级灰度）后 SPI 发送。"""
         if not self._in_stream:
             raise OSError("Must call begin_frame() first")
-        self.spi.write(chunk)
+
+        n = len(chunk)
+        if n == 0:
+            return
+
+        # 4bpp -> 2bpp：每 2 字节输入（4 像素）→ 1 字节输出（4 像素，每 2 bit）
+        if n % 2 != 0:
+            chunk = bytes(chunk) + b'\x00'
+            n += 1
+
+        out = bytearray(n // 2)
+        for i in range(0, n, 2):
+            b0 = chunk[i]
+            b1 = chunk[i + 1]
+            q0 = ((b0 >> 4) & 0x0F) // 5  # 16级 → 4级 (0-3)
+            q1 = (b0 & 0x0F) // 5
+            q2 = ((b1 >> 4) & 0x0F) // 5
+            q3 = (b1 & 0x0F) // 5
+            out[i // 2] = (q0 << 6) | (q1 << 4) | (q2 << 2) | q3
+
+        self.spi.write(out)
 
     def end_frame(self):
         self._in_stream = False

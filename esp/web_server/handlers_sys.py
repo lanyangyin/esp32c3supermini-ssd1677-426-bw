@@ -24,29 +24,27 @@ from .utils import (
 # ============================================================
 
 def handle_upload(conn, body_prefix):
-    """接收 192000 字节的 4bpp 数据，直接写入显存并刷新"""
+    """接收 192000 字节的 4bpp 数据，流式转 2bpp 直接上屏"""
     epd.init()
+    epd.begin_frame()
     received = 0
+    try:
+        if body_prefix:
+            n = min(len(body_prefix), FRAME_BYTES)
+            epd.write_chunk(body_prefix[:n])
+            received += n
+            gc.collect()
 
-    # 获取底层缓存
-    buf = epd._display.buffer
-
-    if body_prefix:
-        n = min(len(body_prefix), FRAME_BYTES)
-        buf[received:received + n] = body_prefix[:n]
-        received += n
-        gc.collect()
-
-    while received < FRAME_BYTES:
-        chunk = conn.recv(min(CHUNK, FRAME_BYTES - received))
-        if not chunk:
-            break
-        buf[received:received + len(chunk)] = chunk
-        received += len(chunk)
-        gc.collect()
-
-    epd.show()
-    epd.sleep()
+        while received < FRAME_BYTES:
+            chunk = conn.recv(min(CHUNK, FRAME_BYTES - received))
+            if not chunk:
+                break
+            epd.write_chunk(chunk)
+            received += len(chunk)
+            gc.collect()
+    finally:
+        epd.end_frame()
+        epd.sleep()
     return received
 
 
