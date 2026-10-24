@@ -192,12 +192,31 @@ def start_server():
         print('import build_font_index')
         print('build_font_index.build()')
 
-    # 绑定端口
-    addr = socket.getaddrinfo("0.0.0.0", 80)[0][-1]
+    # 等待网络栈完全就绪
+    import time
+    time.sleep(1)
+
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(addr)
-    s.listen(5)
+
+    # 绑定端口，带重试机制
+    bound = False
+    for attempt in range(1, 11):
+        try:
+            # 直接用元组绑定，绕开 getaddrinfo
+            s.bind(("0.0.0.0", 80))
+            s.listen(5)
+            print("[WEB] Socket bound to port 80 (attempt %d)" % attempt)
+            bound = True
+            break
+        except OSError as e:
+            print("[WEB] bind attempt %d failed: %s" % (attempt, e))
+            if attempt < 10:
+                time.sleep(1)
+
+    if not bound:
+        print("[WEB] FATAL: Could not bind to port 80 after 10 attempts")
+        return
 
     # 打印网络信息
     try:

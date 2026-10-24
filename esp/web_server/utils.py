@@ -1,5 +1,4 @@
-# web_server/utils.py — 底层公共工具：HTTP 响应、请求解析、存储映射、缩略图生成
-
+# web_server/utils.py — 底层公共工具
 import socket
 import gc
 import os
@@ -43,10 +42,9 @@ MIME_MAP = {
 
 
 # ============================================================
-# 适配器：对接 text_renderer 和 epd
+# 适配器
 # ============================================================
 class EpdStreamAdapter:
-    """将 text_renderer 的流式输出对接给 epd（直接发 SPI）"""
     def __init__(self, epd_mod):
         self.epd = epd_mod
 
@@ -69,7 +67,6 @@ class EpdStreamAdapter:
 # ============================================================
 # 路径与存储工具
 # ============================================================
-
 def _ensure_dir(path):
     try:
         os.mkdir(path)
@@ -78,7 +75,6 @@ def _ensure_dir(path):
 
 
 def _get_storage_paths(storage):
-    """返回 (bins_dir, bgs_dir)"""
     if storage == 'sd':
         return ("/sd/bins", "/sd/bgs")
     return ("/bins", "/bgs")
@@ -164,14 +160,11 @@ def _scan_all_slots(kind):
     out = []
     for storage in ('sd', 'flash'):
         bins_dir, bgs_dir = _get_storage_paths(storage)
-
-        # 安全检测 SD 卡是否挂载
         if storage == 'sd':
             try:
                 os.stat("/sd")
             except OSError:
                 continue
-
         d = bins_dir if kind == 'bins' else bgs_dir
         meta = d + "/meta.json"
         soft = MAX_BINS_SOFT if kind == 'bins' else MAX_BGS_SOFT
@@ -185,13 +178,11 @@ def _resolve_slot_path(kind, storage, slot):
     order = ['sd', 'flash'] if not storage else [storage]
     for st in order:
         bins_dir, bgs_dir = _get_storage_paths(st)
-
         if st == 'sd':
             try:
                 os.stat("/sd")
             except OSError:
                 continue
-
         d = bins_dir if kind == 'bins' else bgs_dir
         p = d + "/" + str(slot) + ".bin"
         try:
@@ -229,7 +220,6 @@ def _remove_thumb_for(bin_path):
 # ============================================================
 # HTTP 底层工具
 # ============================================================
-
 def _mime_of(path):
     for ext, mime in MIME_MAP.items():
         if path.endswith(ext):
@@ -298,7 +288,6 @@ def _send_file(conn, path, content_type=None, cache_seconds=600):
 
 
 def _send_thumb(conn, src_path, cache_seconds=3600):
-    """发送缩略图（优先读取已有 .thumb，否则实时降采样）"""
     if src_path.endswith('.bin'):
         thumb_path = src_path[:-4] + '.thumb'
     else:
@@ -311,7 +300,6 @@ def _send_thumb(conn, src_path, cache_seconds=3600):
     except OSError:
         pass
 
-    # 实时降采样 4bpp: 800x480 -> 200x120
     try:
         size_src = os.stat(src_path)[6]
     except OSError:
@@ -343,12 +331,11 @@ def _send_thumb(conn, src_path, cache_seconds=3600):
 
         with open(src_path, "rb") as f:
             for ty in range(THUMB_H):
-                # 读 4 行源数据（每行 400 字节，共 1600 字节）
                 n = f.readinto(mv_src[:BLOCK_H * SRC_ROW_BYTES])
                 if n is None or n < BLOCK_H * SRC_ROW_BYTES:
                     break
 
-                src_row_off = 0  # 只取这 4 行的第一行进行水平采样
+                src_row_off = 0
                 for tx in range(THUMB_W):
                     sx = tx * 4
                     byte_idx = src_row_off + (sx >> 1)
@@ -479,3 +466,53 @@ def _parse_int_after(headers, path_prefix, max_val=None):
         return n
     except Exception:
         return None
+
+
+# ============================================================
+# 补充遗漏的文件接收函数
+# ============================================================
+def _receive_to_file(conn, path, body_prefix):
+    """接收 192000 字节的 4bpp 数据并保存到文件"""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    try:
+        f = open(path, "wb")
+    except OSError as e:
+        return (False, 0, "open fail: " + str(e))
+
+    received = 0
+    total = FRAME_BYTES
+    chunk_size = 1024
+    try:
+        if body_prefix:
+            n = min(len(body_prefix), total)
+            f.write(body_prefix[:n])
+            received += n
+        while received < total:
+            want = min(chunk_size, total - received)
+            chunk = conn.recv(want)
+            if not chunk:
+                break
+            f.write(chunk)
+            received += len(chunk)
+            if (received % 32768) < chunk_size:
+                gc.collect()
+        try:
+            f.flush()
+        except Exception:
+            pass
+        f.close()
+    except Exception as e:
+        try:
+            f.close()
+        except Exception:
+            pass
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+        return (False, received, str(e))
+    gc.collect()
+    return (True, received, "")

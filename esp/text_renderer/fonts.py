@@ -577,3 +577,16 @@ def list_available_sizes():
                 pass
 
     return sorted(list(set(out)))
+
+def _resolve_font(font_path=None, font_paths=None, size=32):
+    """
+    根据传入的参数决定加载哪个字模。
+    - 如果传了 font_paths（多 chunk），使用多 chunk 字体。
+    - 如果传了 font_path（单文件），使用单文件字体。
+    - 如果都没传，默认加载 /www/fonts/font_%d.bin。
+    """
+    if font_paths:
+        return get_multi_font(font_paths, size=size)
+    if font_path:
+        return get_font(font_path)
+    return get_font("/www/fonts/font_%d.bin" % size)

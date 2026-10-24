@@ -1,5 +1,4 @@
-# ssd1677.py — 16级灰度驱动，支持无缓存流式写入与动态分配缓存
-
+# ssd1677.py — 最终安全版（完全避开父类初始化冲突）
 import time
 import framebuf
 from micropython import const
@@ -17,11 +16,11 @@ _WRITE_RAM_BW = const(0x24)
 _DISPLAY_UPDATE_CONTROL_2 = const(0x22)
 _MASTER_ACTIVATION = const(0x20)
 _DEEP_SLEEP = const(0x10)
-
 _UPDATE_MODE_FULL = const(0xF7)
 
 
-class SSD1677(framebuf.FrameBuffer):
+# 注意：不再继承 framebuf.FrameBuffer，彻底断绝参数冲突！
+class SSD1677:
     def __init__(self, width, height, spi, dc, cs, rst, busy):
         self.width = width
         self.height = height
@@ -37,25 +36,20 @@ class SSD1677(framebuf.FrameBuffer):
         self.busy.init(self.busy.IN)
 
         self._dirty = None
-        # 流式状态
         self._in_stream = False
         self._stream_y = 0
-
-        # 不立即初始化 framebuf，延迟到调用 alloc_framebuffer 时
         self.buffer = None
 
         self.init_display()
 
     def alloc_framebuffer(self):
-        """按需分配整屏缓存（如果你的板子内存足够大，比如带 PSRAM）"""
+        """按需分配整屏缓存（用于 BIN 编辑等重绘图操作）"""
         if self.buffer is not None:
             return True
         try:
             gc.collect()
             self.buffer = bytearray((self.width // 2) * self.height)
-            # 暂存 super().__init__ 的参数，因为 super().__init__ 会占用 buffer
-            # 这里手动初始化 framebuf 环境
-            super().__init__(self.buffer, self.width, self.height, framebuf.GS4_HMSB)
+            # 这里只是给外部提供一个缓冲，不绑定到 FrameBuffer 父类
             print("[SSD1677] framebuffer allocated (192000 bytes)")
             return True
         except MemoryError:
@@ -112,7 +106,6 @@ class SSD1677(framebuf.FrameBuffer):
         self._busy_wait()
 
     def begin_frame(self):
-        """开启流式传输，准备接收数据"""
         self._in_stream = True
         self._stream_y = 0
         self._set_window(0, self.height - 1, self.width - 1, 0)
@@ -123,13 +116,11 @@ class SSD1677(framebuf.FrameBuffer):
         self.dc(1)
 
     def write_chunk(self, chunk):
-        """流式写入 4bpp 字节流（必须是 400 字节的倍数，即一行）"""
         if not self._in_stream:
             raise OSError("Must call begin_frame() first")
         self.spi.write(chunk)
 
     def end_frame(self):
-        """结束流式传输并刷新屏幕"""
         self._in_stream = False
         self.cs(1)
         self._cmd(_DISPLAY_UPDATE_CONTROL_2, _UPDATE_MODE_FULL)
@@ -137,10 +128,8 @@ class SSD1677(framebuf.FrameBuffer):
         self._busy_wait()
 
     def show(self):
-        """整屏刷新（如果分配了 buffer，则直接从 buffer 发送）"""
         if self.buffer is None:
             raise OSError("Framebuffer not allocated. Use begin_frame() / write_chunk() instead.")
-        # 使用流式接口把 buffer 发出去
         self.begin_frame()
         chunk_size = 4000
         for i in range(0, len(self.buffer), chunk_size):
@@ -152,7 +141,6 @@ class SSD1677(framebuf.FrameBuffer):
         time.sleep_ms(2000)
 
     def clear(self, color=15):
-        """清屏（用流式方法，不占用大块内存）"""
         row = bytearray([(color << 4) | color] * 400)
         self.begin_frame()
         for _ in range(self.height):
