@@ -1,4 +1,4 @@
-# ssd1677.py — 极简版（直接透传 1bpp 黑白数据）
+# ssd1677.py — 极简版（1bpp，支持全刷/快刷/局刷）
 import time
 from micropython import const
 
@@ -11,10 +11,15 @@ _SET_RAM_Y_WINDOW = const(0x45)
 _SET_RAM_X_COUNTER = const(0x4E)
 _SET_RAM_Y_COUNTER = const(0x4F)
 _WRITE_RAM_BW = const(0x24)
+_WRITE_RAM_RED = const(0x26)
 _DISPLAY_UPDATE_CONTROL_2 = const(0x22)
 _MASTER_ACTIVATION = const(0x20)
 _DEEP_SLEEP = const(0x10)
-_UPDATE_MODE_FULL = const(0xF7)
+_PARTIAL_IN = const(0x91)
+_PARTIAL_OUT = const(0x90)
+
+_UPDATE_FULL = const(0xF7)
+_UPDATE_FAST = const(0xFF)
 
 
 class SSD1677:
@@ -61,8 +66,12 @@ class SSD1677:
         time.sleep_ms(20)
 
     def _set_window(self, x_start, y_start, x_end, y_end):
-        self._cmd(_SET_RAM_X_WINDOW, x_start & 0xFF, (x_start >> 8) & 0x03, x_end & 0xFF, (x_end >> 8) & 0x03)
-        self._cmd(_SET_RAM_Y_WINDOW, y_start & 0xFF, (y_start >> 8) & 0xFF, y_end & 0xFF, (y_end >> 8) & 0xFF)
+        self._cmd(_SET_RAM_X_WINDOW,
+                  x_start & 0xFF, (x_start >> 8) & 0x03,
+                  x_end & 0xFF, (x_end >> 8) & 0x03)
+        self._cmd(_SET_RAM_Y_WINDOW,
+                  y_start & 0xFF, (y_start >> 8) & 0xFF,
+                  y_end & 0xFF, (y_end >> 8) & 0xFF)
 
     def _set_cursor(self, x, y):
         self._cmd(_SET_RAM_X_COUNTER, x & 0xFF, (x >> 8) & 0x03)
@@ -98,23 +107,44 @@ class SSD1677:
             raise OSError("Must call begin_frame() first")
         self.spi.write(chunk)
 
-    def end_frame(self):
+    def end_frame(self, mode='full'):
+        """结束一帧并刷新。
+
+        mode:
+          'full'    → 0xF7，全刷，4.2s，永久显示，无残影
+          'fast'    → 0xFF，快刷，0.9s，需 RED 基线，可能有轻微残影
+          'partial' → 0x91+0xFF+0x90，局刷，0.9s（全屏窗口包裹 partial 命令）
+        """
         if not self._in_stream:
             return
         self._in_stream = False
         self.cs(1)
-        self._cmd(_DISPLAY_UPDATE_CONTROL_2, _UPDATE_MODE_FULL)
-        self._cmd(_MASTER_ACTIVATION)
-        self._busy_wait()
+
+        if mode == 'full':
+            self._cmd(_DISPLAY_UPDATE_CONTROL_2, _UPDATE_FULL)
+            self._cmd(_MASTER_ACTIVATION)
+            self._busy_wait()
+        elif mode == 'fast':
+            self._cmd(_DISPLAY_UPDATE_CONTROL_2, _UPDATE_FAST)
+            self._cmd(_MASTER_ACTIVATION)
+            self._busy_wait()
+        elif mode == 'partial':
+            self._cmd(_PARTIAL_IN)
+            self._cmd(_DISPLAY_UPDATE_CONTROL_2, _UPDATE_FAST)
+            self._cmd(_MASTER_ACTIVATION)
+            self._busy_wait()
+            self._cmd(_PARTIAL_OUT)
+        else:
+            raise ValueError("mode must be 'full' / 'fast' / 'partial'")
 
     def sleep(self):
         self._cmd(_DEEP_SLEEP, 0x01)
         time.sleep_ms(2000)
 
-    def clear(self, color=1):
+    def clear(self, color=1, mode='full'):
         fill_val = 0xFF if color == 1 else 0x00
         row = bytearray([fill_val] * (self.width // 8))
         self.begin_frame()
         for _ in range(self.height):
             self.write_chunk(row)
-        self.end_frame()
+        self.end_frame(mode)

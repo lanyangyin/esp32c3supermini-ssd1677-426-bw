@@ -292,6 +292,13 @@
         </label>
       </div>
       <button type="button" id="downloadBtn" disabled>下载 image.bin</button>
+      <label style="margin-top:8px">刷新模式
+        <select id="refreshMode">
+          <option value="full">全刷（4.2 秒，永久显示）</option>
+          <option value="fast" selected>快刷（0.9 秒）</option>
+          <option value="partial">局刷（0.9 秒）</option>
+        </select>
+      </label>
       <button type="button" id="uploadBtn" class="primary" disabled>上传并显示</button>
       <button type="button" id="uploadToBinsBtn" disabled>上传到 BIN 库</button>
       <div class="info" style="margin-top:6px">
@@ -1686,7 +1693,8 @@ function bindEvents(){
 
     setStatus('设备在线，正在上传 ' + bin.length + ' 字节（' + sourceLabel + '）…', 'busy');
     try {
-      const r = await fetch(deviceUrl('/upload'), {
+      const mode = ($('refreshMode') && $('refreshMode').value) || 'full';
+      const r = await fetch(deviceUrl('/upload?mode=' + encodeURIComponent(mode)), {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
         body: bin

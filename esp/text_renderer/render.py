@@ -736,7 +736,8 @@ def render_and_display_stream(epd, text, size=32, direction=0, per_char=None,
                               margin_left=20, margin_right=20,
                               band_rows=8, background=None,
                               font_path=None, font_paths=None,
-                              extra_fonts=None, line_extras=None):
+                              extra_fonts=None, line_extras=None,
+                              mode='full'):
     gc.collect()
     font = _resolve_font(font_path=font_path, font_paths=font_paths, size=size)
     if font is None:
@@ -802,7 +803,7 @@ def render_and_display_stream(epd, text, size=32, direction=0, per_char=None,
                 bg_handle.close()
             except:
                 pass
-        epd.end_frame()
+        epd.end_frame(mode)
         epd.sleep()
         gc.collect()
-        print("[TEXT] stream done: free=%d" % gc.mem_free())
+        print("[TEXT] stream done (mode=%s): free=%d" % (mode, gc.mem_free()))

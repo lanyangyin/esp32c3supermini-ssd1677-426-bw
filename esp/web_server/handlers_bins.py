@@ -1,5 +1,4 @@
-# web_server/handlers_bins.py — 处理与 BIN 文件相关的 HTTP 接口
-
+# web_server/handlers_bins.py — BIN 文件相关 HTTP 接口
 import gc
 import os
 import json
@@ -10,6 +9,7 @@ from .utils import (
     _send_json,
     _send_file,
     _send_thumb,
+    _send_response_only,
     _ensure_dir,
     _get_storage_paths,
     _scan_all_slots,
@@ -21,26 +21,55 @@ from .utils import (
     _statvfs_free,
     _read_body,
     _extract_query_param,
+    _parse_content_length,
 )
 import epd
 
 
-def _display_bin_file(path):
-    """读取 4bpp BIN 文件并流式显示到屏幕"""
+def _norm_mode(raw):
+    if raw in ('full', 'fast', 'partial'):
+        return raw
+    return 'full'
+
+
+def _display_bin_file_phase1(path):
+    """Phase 1：init + begin_frame + 所有数据写入 EPD。不刷新屏幕。
+
+    返回 (ok, err, bytes_written)
+    """
+    try:
+        size = os.stat(path)[6]
+    except OSError as e:
+        return (False, "file not found: " + str(e), 0)
+    if size != FRAME_BYTES:
+        return (False, "bad size %d (expected %d)" % (size, FRAME_BYTES), 0)
+
     try:
         epd.init()
         epd.begin_frame()
+    except Exception as e:
+        return (False, "init fail: " + str(e), 0)
 
+    written = 0
+    try:
         with open(path, "rb") as f:
-            chunk_size = 4096
             while True:
-                chunk = f.read(chunk_size)
+                chunk = f.read(4096)
                 if not chunk:
                     break
                 epd.write_chunk(chunk)
+                written += len(chunk)
                 gc.collect()
+    except Exception as e:
+        return (False, "write fail: " + str(e), written)
 
-        epd.end_frame()
+    return (True, "", written)
+
+
+def _display_bin_file_phase2(mode='full'):
+    """Phase 2：end_frame(mode) + sleep。阻塞 4.2s（full）或 0.9s（fast/partial）。"""
+    try:
+        epd.end_frame(mode)
         epd.sleep()
         return (True, "")
     except Exception as e:
@@ -76,7 +105,7 @@ def handle_bins_list(conn):
         "slots": slots,
         "total": len(slots),
         "slot_size": FRAME_BYTES,
-        "thumb_size": 12000,  # 200x120 / 2
+        "thumb_size": 3000,
         "sd_active": sd_active,
         "free_sd": free_sd,
         "free_flash": free_flash,
@@ -133,8 +162,9 @@ def handle_bin_upload(conn, slot, headers, body_prefix):
     except Exception:
         pass
 
+    total_len = _parse_content_length(headers)
     path = bins_dir + "/" + str(slot) + ".bin"
-    ok, received, err = _receive_to_file(conn, path, body_prefix)
+    ok, received, err = _receive_to_file(conn, path, body_prefix, total_len=total_len)
 
     if not ok:
         _send(conn, b"507 Insufficient Storage", err.encode())
@@ -149,8 +179,11 @@ def handle_bin_upload(conn, slot, headers, body_prefix):
 
 
 def handle_bin_upload_and_display(conn, slot, headers, body_prefix):
-    """上传并立即显示。"""
-    # 先按普通逻辑上传并保存
+    """上传并立即显示。
+
+    query: ?mode=full | fast | partial（默认 full）
+    """
+    mode = _norm_mode(_extract_query_param(headers, 'mode'))
     storage = _storage_from_query(headers, default='flash')
     bins_dir, _ = _get_storage_paths(storage)
 
@@ -167,8 +200,9 @@ def handle_bin_upload_and_display(conn, slot, headers, body_prefix):
     except Exception:
         pass
 
+    total_len = _parse_content_length(headers)
     path = bins_dir + "/" + str(slot) + ".bin"
-    ok, received, err = _receive_to_file(conn, path, body_prefix)
+    ok, received, err = _receive_to_file(conn, path, body_prefix, total_len=total_len)
 
     if not ok:
         _send(conn, b"507 Insufficient Storage", err.encode())
@@ -179,21 +213,26 @@ def handle_bin_upload_and_display(conn, slot, headers, body_prefix):
     if note:
         _set_note(bins_dir + "/meta.json", slot, note)
 
-    # 开始显示
-    try:
-        conn.settimeout(120)
-    except Exception:
-        pass
-
-    ok2, err2 = _display_bin_file(path)
+    # Phase 1：写入 EPD
+    ok2, err2, written = _display_bin_file_phase1(path)
     if not ok2:
         _send(conn, b"500 Internal Server Error", ("display fail: " + err2).encode())
         return
 
-    _send(conn, b"200 OK", str(received).encode())
+    _send_response_only(conn, b"200 OK", str(received).encode())
+
+    # Phase 2：刷新
+    ok3, err3 = _display_bin_file_phase2(mode)
+    if not ok3:
+        print("[BIN] display finish error:", err3)
 
 
 def handle_bin_display(conn, slot, headers):
+    """显示已保存的 BIN。
+
+    query: ?mode=full | fast | partial（默认 full）
+    """
+    mode = _norm_mode(_extract_query_param(headers, 'mode'))
     storage = _storage_from_query(headers, default='')
     p, _ = _resolve_slot_path('bins', storage, slot)
     if p is None:
@@ -205,12 +244,16 @@ def handle_bin_display(conn, slot, headers):
     except Exception:
         pass
 
-    ok, err = _display_bin_file(p)
+    ok, err, written = _display_bin_file_phase1(p)
     if not ok:
         _send(conn, b"500 Internal Server Error", err.encode())
         return
 
-    _send(conn, b"200 OK", b"OK")
+    _send_response_only(conn, b"200 OK", b"OK")
+
+    ok2, err2 = _display_bin_file_phase2(mode)
+    if not ok2:
+        print("[BIN] display finish error:", err2)
 
 
 def handle_bin_note(conn, slot, headers, body_prefix):

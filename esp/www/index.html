@@ -290,6 +290,14 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
   </div>
 
   <div class="section-title">已保存的 BIN（SD + Flash）</div>
+  <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+    <span style="font-size:13px;color:var(--muted)">显示模式：</span>
+    <select id="displayRefreshMode" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--line);background:#fafafa;font-size:13px">
+      <option value="full" selected>全刷（4.2s）</option>
+      <option value="fast">快刷（0.9s）</option>
+      <option value="partial">局刷（0.9s）</option>
+    </select>
+  </div>
   <div class="bins-grid" id="binsGrid">
     <div class="bins-empty">加载中…</div>
   </div>
@@ -297,7 +305,7 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
   <div class="section-title">系统</div>
   <div class="panel" style="gap:8px">
     <div class="kv"><span>设备型号</span><span class="v">SSD1677 800×480 (1bpp)</span></div>
-    <div class="kv"><span>帧数据</span><span class="v">96000 字节</span></div>
+    <div class="kv"><span>帧数据</span><span class="v">48000 字节</span></div>
     <div class="kv"><span>网络</span><span class="v" id="netSummary">—</span></div>
     <div class="kv"><span>SD 卡剩余</span><span class="v" id="freeSd">—</span></div>
     <div class="kv"><span>Flash 剩余</span><span class="v" id="freeFlash">—</span></div>
@@ -321,6 +329,15 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
     <div class="upload-targets" id="uploadTargets"></div>
     <div style="font-size:12px;color:var(--muted)">
       选「新建」会追加到对应存储的下一个槽位；选已有槽位会覆盖。
+    </div>
+
+    <div style="margin-top:12px">
+      <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">刷新模式</label>
+      <select id="uploadRefreshMode" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:#fafafa;font-size:14px">
+        <option value="full">全刷（4.2 秒，永久显示，无残影）</option>
+        <option value="fast" selected>快刷（0.9 秒，临时显示）</option>
+        <option value="partial">局刷（0.9 秒，临时显示，命令不同）</option>
+      </select>
     </div>
 
     <div style="display:flex;gap:8px">
@@ -678,9 +695,11 @@ async function refreshBinsGrid(){
 async function displaySlot(idx, storage){
   if (busy) return;
   busy = true;
-  showLoading('正在把 ' + storageLabel(storage) + ' 槽位 ' + (idx+1) + ' 显示到屏幕…');
+  var rm = document.getElementById('displayRefreshMode');
+  var mode = rm ? rm.value : 'full';
+  showLoading('正在把 ' + storageLabel(storage) + ' 槽位 ' + (idx+1) + ' 显示到屏幕（' + mode + '）…');
   try {
-    var r = await fetch('/bins/display/' + idx + '?storage=' + storage);
+    var r = await fetch('/bins/display/' + idx + '?storage=' + storage + '&mode=' + encodeURIComponent(mode));
     if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + await r.text());
   } catch(e){
     alert('显示失败：' + e.message);
@@ -987,6 +1006,10 @@ async function doUpload(display){
   try {
     var endpoint = display ? '/bins/upload_and_display/' : '/bins/upload/';
     var url = endpoint + targetSlot + '?storage=' + storage;
+    if (display) {
+      var rm = document.getElementById('uploadRefreshMode');
+      if (rm) url += '&mode=' + encodeURIComponent(rm.value);
+    }
     if (note) url += '&note=' + encodeURIComponent(note);
 
     var r = await fetch(url, {

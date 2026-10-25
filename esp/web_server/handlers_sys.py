@@ -52,11 +52,25 @@ def _gray_row_templates(val):
     return rows
 
 
+def _norm_mode(raw):
+    if raw in ('full', 'fast', 'partial'):
+        return raw
+    return 'full'
+
+
 # ============================================================
 # 上传并直接显示
 # ============================================================
 
 def handle_upload(conn, headers, body_prefix):
+    """接收 1bpp 数据并显示到屏幕。
+
+    query: ?mode=full | fast | partial（默认 full）
+
+    关键：先发送 HTTP 响应，再执行 end_frame()（阻塞 4.2s 或 0.9s）。
+    """
+    mode = _norm_mode(_extract_query_param(headers, 'mode'))
+
     total_len = _parse_content_length(headers)
     if total_len <= 0:
         _send(conn, b"400 Bad Request", b"empty body")
@@ -98,6 +112,7 @@ def handle_upload(conn, headers, body_prefix):
         err = str(e)
         print("[UPLOAD] epd init error:", e)
 
+    # 排空剩余数据（如果 total_len > need，多出的字节必须读掉，否则浏览器会 RST）
     prefix_len = len(body_prefix) if body_prefix else 0
     remaining = total_len - prefix_len
     already_from_conn = epd_written - min(prefix_len, need)
@@ -119,7 +134,7 @@ def handle_upload(conn, headers, body_prefix):
         _send_response_only(conn, b"200 OK", str(epd_written).encode())
 
     try:
-        epd.end_frame()
+        epd.end_frame(mode)
     except Exception as e:
         print("[UPLOAD] end_frame error:", e)
     try:
@@ -129,7 +144,7 @@ def handle_upload(conn, headers, body_prefix):
 
 
 # ============================================================
-# 灰度测试
+# 灰度测试（默认 full，保证持续显示）
 # ============================================================
 
 def handle_gray_test(conn, headers):
@@ -143,6 +158,8 @@ def handle_gray_test(conn, headers):
     if not (0 <= val <= 15):
         _send(conn, b"400 Bad Request", b"out of range")
         return
+
+    mode = _norm_mode(_extract_query_param(headers, 'mode'))
 
     err = None
     try:
@@ -165,7 +182,7 @@ def handle_gray_test(conn, headers):
         _send_response_only(conn, b"200 OK", b"OK")
 
     try:
-        epd.end_frame()
+        epd.end_frame(mode)
     except Exception as e:
         print("[GRAY] end_frame error:", e)
     try:
@@ -395,14 +412,6 @@ def handle_wifi_delete(conn, headers, body_prefix):
 
 
 def handle_wifi_connect(conn, headers, body_prefix):
-    """立即连接已保存的 WiFi。
-
-    POST JSON: {"ssid": "..."}
-    返回 JSON: {"ok": true, "connected": true, "ip": "..."}
-              {"ok": false, "connected": false, "error": "..."}
-
-    注意：此函数会阻塞 20~40 秒（单线程 HTTP 服务器），期间其他请求排队。
-    """
     try:
         body = _read_body(conn, headers, body_prefix)
         data = json.loads(body) if body else {}

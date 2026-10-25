@@ -185,6 +185,15 @@
     <legend>输出</legend>
     <div class="btn-row">
       <button type="button" id="saveBgBtn">保存为背景</button>
+      <div style="margin-bottom:8px">
+        <label style="display:block;margin-bottom:4px">刷新模式
+          <select id="refreshMode">
+            <option value="full">全刷（4.2 秒，永久显示）</option>
+            <option value="fast" selected>快刷（0.9 秒）</option>
+            <option value="partial">局刷（0.9 秒）</option>
+          </select>
+        </label>
+      </div>
       <button type="button" id="displayBtn" class="primary">显示到屏幕</button>
       <button type="button" id="downloadBtn">下载 BIN</button>
     </div>
@@ -736,9 +745,10 @@ async function saveBg(){
 
 async function displayToScreen(){
   const bin = composeMosaic();
-  setStatus('上传到屏幕，约 5~15 秒…', 'busy');
+  const mode = ($('refreshMode') && $('refreshMode').value) || 'full';
+  setStatus('上传到屏幕（' + mode + '）…', 'busy');
   try {
-    const r = await fetch('/upload', {
+    const r = await fetch('/upload?mode=' + encodeURIComponent(mode), {
       method: 'POST',
       headers: {'Content-Type':'application/octet-stream'},
       body: bin

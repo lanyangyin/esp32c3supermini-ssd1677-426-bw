@@ -1,34 +1,11 @@
-# boot_screen.py — 开机模式检测（GPIO20+21）+ 4 种动作（灰度 800x480）
-#
-# 模式表（GPIO20 = bit1，GPIO21 = bit0，1 表示开关"连通"）：
-#   00: 什么都不做
-#   01: 随机显示 bins 里的一个 bin
-#   10: 显示网络信息（mosaic 拼图 + 文字）
-#   11: 显示指定的 bin（未指定则用 bins 里序号最大的）
-#
-# 硬件：拨动开关一端接 GPIO20/21，另一端接 GND
-#       引脚内部 PULL_UP，断开时读 1，连通（短接 GND）时读 0
-#       代码用 MODE_ACTIVE_VALUE = 0 表示"连通"
-#
-# API：
-#   _read_mode()              读 GPIO，返回 0/1/2/3 或 None
-#   run_mode(mode)            执行指定模式的动作（不读 GPIO）
-#   check_and_run(force_mode) 兼容旧 API：读 + 执行
-#
-# REPL 调试：
-#   import boot_screen
-#   boot_screen._read_mode()
-#   boot_screen.run_mode(2)
-#   boot_screen.set_designated('sd', 3)
-#   boot_screen.clear_designated()
+# boot_screen.py — 开机模式检测（GPIO20+21）+ 4 种动作（1bpp 800x480）
 
 import os
 import gc
 import time
 
-# ---------- 引脚配置 ----------
-MODE_PIN_A = 20  # bit1（高位）
-MODE_PIN_B = 21  # bit0（低位）
+MODE_PIN_A = 20
+MODE_PIN_B = 21
 
 from machine import Pin
 
@@ -38,30 +15,22 @@ MODE_ACTIVE_VALUE = 0
 DEBOUNCE_MS = 100
 SAMPLES = 10
 
-# ---------- 模式常量 ----------
-MODE_NOOP = 0  # 00
-MODE_RANDOM = 1  # 01
-MODE_NETINFO = 2  # 10
-MODE_DESIGNATED = 3  # 11
+MODE_NOOP = 0
+MODE_RANDOM = 1
+MODE_NETINFO = 2
+MODE_DESIGNATED = 3
 
-# ---------- 其它配置 ----------
 FIXED_BOTTOM = ">>>>>>>>>>>><<<<<<<<<<<<"
-GRAY_FILL = 'pseudo:0,1,4'  # 灰度版依然支持这个伪色指令，用于拼图
+GRAY_FILL = 'pseudo:0,1,4'
 TMP_BG_SD = '/sd/bgs/__boot_bg__.bin'
 TMP_BG_FLASH = '/bgs/__boot_bg__.bin'
 BOOT_CFG_PATH = '/boot_cfg.json'
 FRAME_BYTES = 800 * 480 // 8  # 48000 字节（1bpp）
 
-# 统一导入 epd，后续操作基于此实例
 import epd
 
 
-# ============================================================
-# 入口
-# ============================================================
-
 def check_and_run(force_mode=None):
-    """兼容旧 API：读模式 + 执行。main.py 推荐用 _read_mode() + run_mode()。"""
     if force_mode is None:
         mode = _read_mode()
         if mode is None:
@@ -74,7 +43,6 @@ def check_and_run(force_mode=None):
 
 
 def run_mode(mode):
-    """执行指定模式（不读 GPIO）。返回 True 表示执行了动作，False 表示跳过/失败。"""
     t0 = time.ticks_ms()
     try:
         if mode == MODE_NOOP:
@@ -114,10 +82,6 @@ def run_mode(mode):
         return False
 
 
-# ============================================================
-# 引脚检测
-# ============================================================
-
 def _read_mode():
     try:
         pa = Pin(MODE_PIN_A, Pin.IN, MODE_PIN_PULL)
@@ -144,10 +108,6 @@ def _read_mode():
     return (va << 1) | vb
 
 
-# ============================================================
-# 模式 01：随机 bin
-# ============================================================
-
 def _do_random_bin_screen():
     import random
     candidates = _scan_bins()
@@ -157,12 +117,8 @@ def _do_random_bin_screen():
 
     path = candidates[random.randrange(len(candidates))]
     print('[BOOT] 从 %d 个 bin 中随机选中: %s' % (len(candidates), path))
-    return _display_bin_file(path)
+    return _display_bin_file(path, mode='full')
 
-
-# ============================================================
-# 模式 10：网络信息
-# ============================================================
 
 def _do_netinfo_screen():
     bg = _compose_mosaic()
@@ -174,10 +130,6 @@ def _do_netinfo_screen():
     return True
 
 
-# ============================================================
-# 模式 11：指定 bin
-# ============================================================
-
 def _do_designated_bin_screen():
     cfg = _load_boot_cfg()
     storage = cfg.get('storage')
@@ -188,7 +140,7 @@ def _do_designated_bin_screen():
         print('[BOOT] 指定: %s 槽位 %d → %s'
               % (storage, index + 1, path))
         if _file_exists(path):
-            return _display_bin_file(path)
+            return _display_bin_file(path, mode='full')
         print('[BOOT] 指定文件不存在，回退到最后一个')
 
     candidates = _scan_bins()
@@ -198,12 +150,8 @@ def _do_designated_bin_screen():
     candidates.sort()
     path = candidates[-1]
     print('[BOOT] 使用最后一个 bin: %s' % path)
-    return _display_bin_file(path)
+    return _display_bin_file(path, mode='full')
 
-
-# ============================================================
-# 配置读写
-# ============================================================
 
 def _load_boot_cfg():
     try:
@@ -245,10 +193,6 @@ def clear_designated():
     return True
 
 
-# ============================================================
-# 路径 / 文件工具
-# ============================================================
-
 def _scan_bins():
     out = []
     for d in ('/bins', '/sd/bins'):
@@ -282,12 +226,11 @@ def _ensure_dir(path):
         pass
 
 
-# ============================================================
-# 显示 bin 文件（流式写入）
-# ============================================================
+def _display_bin_file(path, mode='full'):
+    """显示 1bpp BIN 文件（48000 字节）。
 
-def _display_bin_file(path):
-    """流式显示 1bpp BIN 文件（48000 字节）。"""
+    mode: 'full' | 'fast' | 'partial'
+    """
     try:
         size = os.stat(path)[6]
     except OSError:
@@ -297,7 +240,7 @@ def _display_bin_file(path):
         print('[BOOT] 文件大小异常: %d（应为 %d）' % (size, FRAME_BYTES))
         return False
 
-    print('[BOOT] 开始显示 %s（%d 字节，约 10~30 秒）…' % (path, size))
+    print('[BOOT] 开始显示 %s（%d 字节, mode=%s）…' % (path, size, mode))
     epd.init()
     epd.begin_frame()
     try:
@@ -311,7 +254,7 @@ def _display_bin_file(path):
     except Exception as e:
         print('[BOOT] 写数据失败:', e)
         try:
-            epd.end_frame()
+            epd.end_frame('full')
         except Exception:
             pass
         try:
@@ -321,7 +264,7 @@ def _display_bin_file(path):
         return False
 
     try:
-        epd.end_frame()
+        epd.end_frame(mode)
     except Exception as e:
         print('[BOOT] end_frame 失败:', e)
         return False
@@ -332,10 +275,6 @@ def _display_bin_file(path):
     print('[BOOT] 显示完成')
     return True
 
-
-# ============================================================
-# 网络信息（mosaic + 文字）
-# ============================================================
 
 def _resolve_font():
     for p in (
@@ -495,9 +434,8 @@ def _render_netinfo(bg_path):
 
     print('[BOOT] [4/4] 渲染到屏幕（背景 %s）…' % bg_path)
 
-    # 注意：这里的 render_and_display_stream 接口在后续改造中会支持直接推流
     render_and_display_stream(
-        epd._display,  # 传入底层驱动对象
+        epd._display,
         text,
         size=32,
         direction=90,
@@ -523,4 +461,5 @@ def _render_netinfo(bg_path):
         band_rows=8,
         background=bg_path,
         font_paths=font_paths,
+        mode='full',
     )

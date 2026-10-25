@@ -1,4 +1,4 @@
-# mosaic.py — 网格拼图（1bpp 800x480）
+# mosaic.py — 网格拼图（1bpp，支持全刷/快刷/局刷）
 #
 # src 格式：
 #   '/path/to/N.bin'     文件源（1bpp，48000 字节）
@@ -12,12 +12,11 @@ FRAME_BYTES = W * H // 8  # 48000 (1bpp)
 MAX_CELLS = 64
 WHITE_IDX = 15
 
-# 4×4 Bayer 矩阵
 BAYER = (
-    (0,  8,  2, 10),
-    (12, 4, 14,  6),
-    (3, 11,  1,  9),
-    (15, 7, 13,  5),
+    (0, 8, 2, 10),
+    (12, 4, 14, 6),
+    (3, 11, 1, 9),
+    (15, 7, 13, 5),
 )
 
 
@@ -104,7 +103,6 @@ def _iter_rows(grid):
                         out_row[x] = idx
                 elif kind == 'file':
                     f = handles[params]
-                    # 1bpp：每行 100 字节
                     byte_start = x0 >> 3
                     byte_end = (x1 + 7) >> 3
                     byte_count = byte_end - byte_start
@@ -125,14 +123,12 @@ def _iter_rows(grid):
                         v = (bval >> bit) & 1
                         out_row[x] = 15 if v else 0
 
-            # 打包 1bpp（Bayer 抖动，0..15 灰度 → 1bpp）
             packed = bytearray(100)
             for bi in range(100):
                 bv = 0
                 base_x = bi * 8
                 for bit in range(8):
                     v = out_row[base_x + bit]
-                    # v(0..15) 映射到 0..255，Bayer 映射到 0..248 中间值
                     if v * 17 > BAYER[out_y & 3][(base_x + bit) & 3] * 16 + 8:
                         bv |= 0x80 >> bit
                 packed[bi] = bv
@@ -167,8 +163,11 @@ def compose_bytes(grid):
     return bytes(out)
 
 
-def compose_and_display(grid, epd_mod=None):
-    """流式显示到屏幕（1bpp，用 EPD 的流式 API）。"""
+def compose_and_display(grid, epd_mod=None, mode='full'):
+    """流式显示到屏幕。
+
+    mode: 'full' | 'fast' | 'partial'
+    """
     if epd_mod is None:
         import epd as epd_mod
 
@@ -178,5 +177,5 @@ def compose_and_display(grid, epd_mod=None):
         for row in _iter_rows(grid):
             epd_mod.write_chunk(row)
     finally:
-        epd_mod.end_frame()
+        epd_mod.end_frame(mode)
         epd_mod.sleep()

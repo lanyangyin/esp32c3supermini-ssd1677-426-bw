@@ -382,6 +382,11 @@
     <fieldset>
       <div id="status" class="info" style="color:var(--focus); font-weight:bold; font-size:12px;">加载中…</div>
       <div class="btn-row" style="margin-top:12px">
+        <select id="refreshMode" style="flex:1;min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:4px;background:var(--panel-deep);color:var(--ink);font-size:12px">
+          <option value="full" selected>全刷 4.2s</option>
+          <option value="fast">快刷 0.9s</option>
+          <option value="partial">局刷 0.9s</option>
+        </select>
         <button type="button" id="refreshBtn">重新渲染</button>
         <button type="button" id="applyBtn" class="primary" disabled>应用到屏幕</button>
       </div>
@@ -2073,6 +2078,7 @@ async function doApply(){
 
   const payload = {
     text: $('textInput').value,
+    mode: ($('refreshMode') && $('refreshMode').value) || 'full',
     size: currentSize,
     direction: direction,
     per_char: perCharPayload,

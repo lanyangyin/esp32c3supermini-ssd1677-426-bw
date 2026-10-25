@@ -1,5 +1,4 @@
 # web_server/handlers_text.py — 处理流式文字渲染接口
-
 import gc
 import json
 import epd
@@ -14,6 +13,12 @@ from text_renderer import (
     render_full,
     _create_font_direct,
 )
+
+
+def _norm_mode(raw):
+    if raw in ('full', 'fast', 'partial'):
+        return raw
+    return 'full'
 
 
 def handle_text_render(conn, headers, body_prefix):
@@ -37,8 +42,8 @@ def handle_text_render(conn, headers, body_prefix):
         font_path = params.get("font_path") or None
         font_paths = params.get("font_paths") or None
         per_char = params.get("per_char")
+        mode = _norm_mode(params.get("mode", "full"))
 
-        # 处理额外的字体
         default_key = '|'.join(font_paths) if font_paths else ''
         extra_fonts = {}
         if per_char:
@@ -63,7 +68,6 @@ def handle_text_render(conn, headers, body_prefix):
                     extra_fonts[key] = f
                     _gc.collect()
 
-        # 提取渲染参数
         args = dict(
             size=size,
             direction=int(params.get("direction", 0)),
@@ -92,24 +96,23 @@ def handle_text_render(conn, headers, body_prefix):
             pass
 
         if dry_run:
-            # 如果不直接显示，而是生成 BIN，用非流式接口返回
             bin_data = render_full(text, background=background, **args)
             from .utils import _send
             _send(conn, b"200 OK", bin_data, content_type=b"application/octet-stream")
         else:
-            # 流式渲染（默认路径）
             band = int(params.get("band_rows", 8))
 
-            # 先发送响应，告诉浏览器任务已开始
             _send_json(conn, {"ok": True, "mode": "stream",
                               "band_rows": band, "bg": background,
                               "extra_fonts": len(extra_fonts),
+                              "refresh_mode": mode,
                               "started": True})
 
             adapter = EpdStreamAdapter(epd)
             try:
                 render_and_display_stream(adapter, text, band_rows=band,
-                                          background=background, **args)
+                                          background=background,
+                                          mode=mode, **args)
             except Exception as render_err:
                 print("[TEXT] deferred render fail:", render_err)
                 try:
