@@ -390,6 +390,9 @@
         <button type="button" id="refreshBtn">重新渲染</button>
         <button type="button" id="applyBtn" class="primary" disabled>应用到屏幕</button>
       </div>
+      <div class="btn-row" style="margin-top:8px">
+        <button type="button" id="clearGhostingBtn" style="flex:1;border-color:#6a2a2a;color:#ffb4a8">去除残影（全屏刷白）</button>
+      </div>
       <div class="info" style="text-align:center; margin-top:6px;">预览在本地生成；"应用"发送参数由设备流式渲染。</div>
     </fieldset>
   </aside>
@@ -1676,28 +1679,49 @@ async function loadBgsList(){
 
 function storageLabel(s){ return s === 'sd' ? 'SD' : 'Flash'; }
 
+// 修复：服务端 /bgs/thumb/ 返回的是 1bpp 3000 字节
+// 函数名保持 makeThumbFrom4bpp 以防调用点报错，但内部重写为 1bpp 解析
 function makeThumbFrom4bpp(buf, tw, th){
   const img = new ImageData(tw, th);
   const d = img.data;
-  const rowBytes = tw / 2;
+  const rowBytes = tw >> 3; // 200/8 = 25 字节/行
   for (let y = 0; y < th; y++){
     const rowBase = y * rowBytes;
     const pixBase = y * tw * 4;
     for (let xb = 0; xb < rowBytes; xb++){
       const b = buf[rowBase + xb];
-      const hi = (b >> 4) & 0xF;
-      const lo = b & 0xF;
-
-      const c0 = hi * 17;
-      const c1 = lo * 17;
-
-      const o0 = pixBase + xb * 8;
-      const o1 = o0 + 4;
-      d[o0]=c0; d[o0+1]=c0; d[o0+2]=c0; d[o0+3]=255;
-      d[o1]=c1; d[o1+1]=c1; d[o1+2]=c1; d[o1+3]=255;
+      for (let bit = 0; bit < 8; bit++){
+        const px = xb * 8 + bit;
+        if (px >= tw) break;
+        const isWhite = (b & (0x80 >> bit)) ? 255 : 0;
+        const o = pixBase + px * 4;
+        d[o] = isWhite; d[o+1] = isWhite; d[o+2] = isWhite; d[o+3] = 255;
+      }
     }
   }
   return img;
+}
+
+// 修复：补全 generateThumb（1bpp 缩放到 1bpp）
+function generateThumb(bin){
+  var tw = THUMB_W, th = THUMB_H;
+  var thumb = new Uint8Array(tw * th / 8);
+  for (var ty = 0; ty < th; ty++){
+    var sy = ty * 4;
+    var srcBase = sy * 100; // 800/8 = 100
+    var dstBase = ty * 25;  // 200/8 = 25
+    for (var tx = 0; tx < tw; tx++){
+      var sx = tx * 4;
+      var b = bin[srcBase + (sx >> 3)];
+      var isWhite = (b >> (7 - (sx & 7))) & 1;
+      if (isWhite){
+        thumb[dstBase + (tx >> 3)] |= (0x80 >> (tx & 7));
+      } else {
+        thumb[dstBase + (tx >> 3)] &= ~(0x80 >> (tx & 7));
+      }
+    }
+  }
+  return thumb;
 }
 
 async function loadBgThumb(slot, canvas){
@@ -2390,6 +2414,13 @@ function bindEvents(){
   $('refreshBtn').addEventListener('click', () => doRender());
   $('applyBtn').addEventListener('click', doApply);
 
+  $('clearGhostingBtn').addEventListener('click', async () => {
+    const btn = $('clearGhostingBtn');
+    btn.disabled = true;
+    await window.E6Display.clearGhosting('full', setStatus);
+    btn.disabled = false;
+  });
+
   $('uploadBgBtn').addEventListener('click', () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -2492,6 +2523,7 @@ init();
 
 })();
 </script>
+<script src="/display.js"></script>
 <script src="/nav.js"></script>
 </body>
 </html>

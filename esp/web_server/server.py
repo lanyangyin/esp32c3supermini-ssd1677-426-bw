@@ -34,22 +34,24 @@ from .handlers_sys import (
     handle_upload, handle_gray_test, handle_fonts_list, handle_fonts_get,
     handle_system_status, handle_wifi_scan, handle_wifi_list,
     handle_wifi_save, handle_wifi_delete, handle_wifi_connect,
+    handle_clear_display,
 )
 from .handlers_text import handle_text_render
 
-# ---------- 静态文件路由表 ----------
 WWW_INDEX = "/www/index.html"
 WWW_CONVERT = "/www/converter.html"
 WWW_WIFI = "/www/wifi.html"
 WWW_TEXT = "/www/text_panel.html"
 WWW_EDIT = "/www/bin_editor.html"
 WWW_MOSAIC = "/www/mosaic.html"
+WWW_UPLOAD = "/www/upload.html"
 
 ROUTE_MAP = {
     "/": WWW_INDEX,
     "/index": WWW_INDEX,
     "/index.html": WWW_INDEX,
     "/convert": WWW_CONVERT,
+    "/convert.html": WWW_CONVERT,
     "/edit": WWW_EDIT,
     "/edit.html": WWW_EDIT,
     "/wifi": WWW_WIFI,
@@ -57,12 +59,9 @@ ROUTE_MAP = {
     "/text.html": WWW_TEXT,
     "/mosaic": WWW_MOSAIC,
     "/mosaic.html": WWW_MOSAIC,
+    "/upload": WWW_UPLOAD,
+    "/upload.html": WWW_UPLOAD,
 }
-
-
-# ============================================================
-# 开机指定 BIN 专属接口
-# ============================================================
 
 def _handle_boot_bin_get(conn):
     try:
@@ -86,7 +85,6 @@ def _handle_boot_bin_get(conn):
         "index": index,
         "defined": (storage is not None and index is not None),
     })
-
 
 def _handle_boot_bin_set(conn, headers, body_prefix):
     try:
@@ -116,10 +114,6 @@ def _handle_boot_bin_set(conn, headers, body_prefix):
     except OSError as e:
         _send(conn, b"500 Internal Server Error", str(e).encode())
 
-
-# ============================================================
-# 静态文件服务
-# ============================================================
 
 def _serve_static(conn, headers):
     try:
@@ -163,10 +157,6 @@ def _serve_static(conn, headers):
         return
     _send_file(conn, WWW_INDEX)
 
-
-# ============================================================
-# 主服务启动
-# ============================================================
 
 def start_server(bind_ip="0.0.0.0"):
     for d in ("/bins", "/bgs"):
@@ -232,21 +222,13 @@ def start_server(bind_ip="0.0.0.0"):
 
             if headers.startswith(b"OPTIONS "):
                 from .utils import CORS_HEADERS
-                conn.send(
-                    b"HTTP/1.1 200 OK\r\n"
-                    + CORS_HEADERS +
-                    b"Content-Length: 0\r\n"
-                    b"Connection: close\r\n\r\n"
-                )
+                conn.send(b"HTTP/1.1 200 OK\r\n" + CORS_HEADERS + b"Content-Length: 0\r\nConnection: close\r\n\r\n")
                 continue
 
-            # 开机指定 BIN
             if headers.startswith(b"GET /boot/bin"):
                 _handle_boot_bin_get(conn)
             elif headers.startswith(b"POST /boot/bin"):
                 _handle_boot_bin_set(conn, headers, body_prefix)
-
-            # 缩略图上传
             elif headers.startswith(b"POST /bins/thumb_upload/"):
                 slot = _parse_int_after(headers, b"/bins/thumb_upload/")
                 if slot is None:
@@ -261,8 +243,6 @@ def start_server(bind_ip="0.0.0.0"):
                 else:
                     from .utils import _handle_thumb_upload
                     _handle_thumb_upload(conn, 'bgs', slot, headers, body_prefix)
-
-            # 缩略图读取
             elif headers.startswith(b"GET /bins/thumb/"):
                 slot = _parse_int_after(headers, b"/bins/thumb/")
                 if slot is None:
@@ -285,8 +265,6 @@ def start_server(bind_ip="0.0.0.0"):
                         _send(conn, b"404 Not Found", b"not found")
                     else:
                         _send_thumb(conn, p)
-
-            # BIN 接口
             elif headers.startswith(b"GET /bins/list"):
                 handle_bins_list(conn)
             elif headers.startswith(b"GET /bins/get/"):
@@ -325,8 +303,6 @@ def start_server(bind_ip="0.0.0.0"):
                     _send(conn, b"400 Bad Request", b"bad slot")
                 else:
                     handle_bin_display(conn, slot, headers)
-
-            # BGS 接口
             elif headers.startswith(b"GET /bgs/list"):
                 handle_bgs_list(conn)
             elif headers.startswith(b"GET /bgs/get/"):
@@ -353,20 +329,18 @@ def start_server(bind_ip="0.0.0.0"):
                     _send(conn, b"400 Bad Request", b"bad slot")
                 else:
                     handle_bg_note(conn, slot, headers, body_prefix)
-
-            # 字体接口
             elif headers.startswith(b"GET /fonts/list"):
                 handle_fonts_list(conn)
             elif headers.startswith(b"GET /fonts/get"):
                 handle_fonts_get(conn, headers)
-
-            # 系统接口
             elif headers.startswith(b"POST /upload"):
                 handle_upload(conn, headers, body_prefix)
             elif headers.startswith(b"POST /text/render"):
                 handle_text_render(conn, headers, body_prefix)
             elif b"GET /gray/" in headers:
                 handle_gray_test(conn, headers)
+            elif headers.startswith(b"GET /clear"):
+                handle_clear_display(conn, headers)
             elif headers.startswith(b"GET /status"):
                 handle_system_status(conn)
             elif headers.startswith(b"GET /wifi/scan"):
@@ -379,8 +353,6 @@ def start_server(bind_ip="0.0.0.0"):
                 handle_wifi_delete(conn, headers, body_prefix)
             elif headers.startswith(b"POST /wifi/connect"):
                 handle_wifi_connect(conn, headers, body_prefix)
-
-            # 静态文件兜底
             elif headers.startswith(b"GET "):
                 _serve_static(conn, headers)
             else:

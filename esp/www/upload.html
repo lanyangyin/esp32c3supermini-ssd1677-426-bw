@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>上传 BIN - E6 Panel</title>
+<style>
+  :root {
+    --bg:#f4f4f4; --card:#fff; --ink:#222; --muted:#888; --line:#e4e4e4;
+    --accent:#06c; --ok:#0a7a0a; --err:#c00; --shadow:0 1px 3px rgba(0,0,0,.06);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, system-ui, sans-serif; font-size: 15px; line-height: 1.5;
+    min-height: 100vh; padding-bottom: 80px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10; background: rgba(255,255,255,.94);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+    padding: 10px 14px; display: flex; align-items: center; gap: 10px; min-height: 52px;
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+  .back-btn {
+    width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line);
+    background: #fff; font-size: 18px; cursor: pointer; display: grid; place-items: center;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 14px; display: grid; gap: 14px; }
+  .panel {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px; box-shadow: var(--shadow); display: grid; gap: 12px;
+  }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  input[type=file] {
+    width: 100%; padding: 10px; border: 1px dashed var(--line); border-radius: 10px;
+    background: #fafafa; font-size: 13px; color: var(--muted);
+  }
+  input[type=file]::file-selector-button {
+    padding: 6px 12px; margin-right: 10px; border: 0; border-radius: 6px;
+    background: #eaeaea; color: var(--ink); font-weight: 500; cursor: pointer;
+  }
+  input[type=text], select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line);
+    border-radius: 10px; background: #fafafa; font-size: 14px; outline: none;
+  }
+  input[type=text]:focus, select:focus { border-color: var(--accent); background: #fff; }
+  button.btn {
+    padding: 12px 16px; border-radius: 10px; border: none; font-size: 15px;
+    font-weight: 600; cursor: pointer; background: var(--accent); color: #fff;
+  }
+  button.btn:disabled { opacity: .4; cursor: not-allowed; }
+  button.btn.secondary { background: #555; }
+
+  .upload-targets { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  .target-btn {
+    padding: 12px 8px; border-radius: 8px; border: 1px solid var(--line);
+    background: #f7f7f7; color: var(--ink); font-weight: 600; font-size: 12px;
+    cursor: pointer; text-align: left; line-height: 1.4;
+  }
+  .target-btn.new-sd { background: #e8f4ff; border-color: #b8d8ff; color: #0a5bc8; }
+  .target-btn.new-flash { background: #f0f7e8; border-color: #c8dcb8; color: #3a7a1a; }
+  .target-btn.filled { background: #eef5ff; border-color: #cfe0f5; }
+  .target-btn.selected {
+    border-color: var(--accent); background: #e0eeff; box-shadow: 0 0 0 2px rgba(0,102,204,.2);
+  }
+  .status {
+    padding: 12px 14px; border-radius: 10px; background: #f0f0f0; color: #333;
+    font-size: 13px; min-height: 44px; line-height: 1.5; word-break: break-word;
+  }
+  .status.busy { background: #e8f1fa; color: #0a5bc8; }
+  .status.ok { background: #e8f6e8; color: #0a7a0a; }
+  .status.err { background: #fdeaea; color: #c00; }
+</style>
+</head>
+<body data-nav-layout="scroll">
+
+<header>
+  <button class="back-btn" onclick="location.href='/'">←</button>
+  <h1>上传 BIN</h1>
+</header>
+
+<main>
+  <div class="panel">
+    <div>
+      <label for="f">选择 image.bin 文件</label>
+      <input type="file" id="f" accept=".bin">
+    </div>
+
+    <div>
+      <label for="noteInput">备注（可选，最多 100 字）</label>
+      <input type="text" id="noteInput" maxlength="100" placeholder="例如：会议海报 / 周末待办">
+    </div>
+
+    <div style="font-size:13px;font-weight:600;margin-top:4px">上传目标</div>
+    <div class="upload-targets" id="uploadTargets">
+      <div style="grid-column:1/-1;color:#888;font-size:12px">加载中…</div>
+    </div>
+    <div style="font-size:12px;color:var(--muted)">
+      选「新建」会追加到对应存储的下一个槽位；选已有槽位会覆盖。
+    </div>
+
+    <div style="margin-top:8px">
+      <label style="margin-bottom:6px">刷新模式</label>
+      <select id="uploadRefreshMode">
+        <option value="full">全刷（4.2 秒，永久显示，无残影）</option>
+        <option value="fast" selected>快刷（0.9 秒，临时显示）</option>
+        <option value="partial">局刷（0.9 秒，临时显示）</option>
+      </select>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn secondary" id="uploadOnlyBtn" disabled style="flex:1">仅上传</button>
+      <button class="btn" id="uploadBtn" disabled style="flex:2">上传并显示</button>
+    </div>
+  </div>
+
+  <div class="status" id="uploadStatus">就绪</div>
+</main>
+
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var busy = false;
+var FRAME_BYTES = 48000;
+var MAX_NOTE = 200;
+
+var currentBins = null;
+var currentUploadTarget = { mode: 'new', storage: 'flash' };
+
+function storageLabel(s){ return s === 'sd' ? 'SD' : 'Flash'; }
+function storageTag(s){
+  return '<span style="display:inline-block;padding:0 5px;border-radius:8px;font-size:9px;font-weight:700;background:' + (s==='sd'?'#cfe8ff;color:#0a5bc8':'#e8e8e8;color:#444') + '">' + storageLabel(s) + '</span>';
+}
+
+function setStatus(text, cls){
+  var el = $('uploadStatus');
+  el.textContent = text;
+  el.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+async function fetchBins(){
+  try {
+    var r = await fetch('/bins/list', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } catch(e){
+    return null;
+  }
+}
+
+function nextFreeSlot(storage){
+  var n = 0;
+  if (currentBins && currentBins.slots){
+    for (var i = 0; i < currentBins.slots.length; i++){
+      var s = currentBins.slots[i];
+      if (s.storage === storage && s.index >= n) n = s.index + 1;
+    }
+  }
+  return n;
+}
+
+function renderUploadTargets(){
+  var grid = $('uploadTargets');
+  grid.innerHTML = '';
+
+  var sdActive = currentBins && currentBins.sd_active;
+
+  if (sdActive){
+    var btnSd = document.createElement('button');
+    btnSd.type = 'button';
+    btnSd.className = 'target-btn new-sd' +
+      (currentUploadTarget.mode === 'new' && currentUploadTarget.storage === 'sd' ? ' selected' : '');
+    btnSd.innerHTML = '<div>＋ 新建到 SD</div>' +
+      '<div style="font-size:10px;color:inherit;opacity:.8;margin-top:2px">下一槽位 ' +
+      (nextFreeSlot('sd') + 1) + '</div>';
+    btnSd.onclick = function(){
+      currentUploadTarget = {mode:'new', storage:'sd'};
+      renderUploadTargets();
+      updateUploadButton();
+    };
+    grid.appendChild(btnSd);
+  }
+
+  var btnFlash = document.createElement('button');
+  btnFlash.type = 'button';
+  btnFlash.className = 'target-btn new-flash' +
+    (currentUploadTarget.mode === 'new' && currentUploadTarget.storage === 'flash' ? ' selected' : '');
+  btnFlash.innerHTML = '<div>＋ 新建到 Flash</div>' +
+    '<div style="font-size:10px;color:inherit;opacity:.8;margin-top:2px">下一槽位 ' +
+    (nextFreeSlot('flash') + 1) + '</div>';
+  btnFlash.onclick = function(){
+    currentUploadTarget = {mode:'new', storage:'flash'};
+    renderUploadTargets();
+    updateUploadButton();
+  };
+  grid.appendChild(btnFlash);
+
+  if (currentBins && currentBins.slots){
+    currentBins.slots.forEach(function(slot){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'target-btn filled' +
+        (currentUploadTarget.mode === 'existing' &&
+         currentUploadTarget.storage === slot.storage &&
+         currentUploadTarget.index === slot.index ? ' selected' : '');
+      btn.innerHTML = '<div>' + storageTag(slot.storage) + ' 槽位 ' +
+        (slot.index + 1) + '</div>' +
+        (slot.note ? '<div style="font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+          slot.note + '</div>' : '');
+      btn.onclick = function(){
+        currentUploadTarget = {mode:'existing', storage: slot.storage, index: slot.index};
+        if (slot.note) $('noteInput').value = slot.note;
+        renderUploadTargets();
+        updateUploadButton();
+      };
+      grid.appendChild(btn);
+    });
+  }
+}
+
+function updateUploadButton(){
+  var hasFile = $('f').files && $('f').files.length > 0;
+  var t = currentUploadTarget;
+  var targetOk = (t.mode === 'new' && t.storage) ||
+                 (t.mode === 'existing' && t.storage != null && t.index != null);
+  var ok = hasFile && targetOk;
+  $('uploadBtn').disabled = !ok;
+  $('uploadOnlyBtn').disabled = !ok;
+}
+
+async function doUpload(display){
+  if (busy) return;
+  var f = $('f').files[0];
+  if (!f){ setStatus('请选择文件', 'err'); return; }
+
+  var buf = await f.arrayBuffer();
+  if (buf.byteLength !== FRAME_BYTES){
+    setStatus('文件大小错误：' + buf.byteLength + ' 字节，应为 ' + FRAME_BYTES, 'err');
+    return;
+  }
+
+  var t = currentUploadTarget;
+  var isNew = (t.mode === 'new');
+  var storage = t.storage;
+  var targetSlot;
+
+  if (isNew){
+    targetSlot = nextFreeSlot(storage);
+  } else {
+    targetSlot = t.index;
+    var cnfText = (display ? '覆盖并显示 ' : '覆盖 ') +
+      storageLabel(storage) + ' 槽位 ' + (targetSlot+1) + '？';
+    if (!confirm(cnfText)) return;
+  }
+
+  var note = ($('noteInput').value || '').slice(0, MAX_NOTE).trim();
+
+  busy = true;
+  $('uploadBtn').disabled = true;
+  $('uploadOnlyBtn').disabled = true;
+  setStatus(
+    (display ? '正在上传并显示到 ' : '正在上传到 ') + storageLabel(storage) + ' 槽位 ' + (targetSlot+1) +
+    '，约 ' + (display ? '20~40' : '10~20') + ' 秒…', 'busy');
+
+  try {
+    var endpoint = display ? '/bins/upload_and_display/' : '/bins/upload/';
+    var url = endpoint + targetSlot + '?storage=' + storage;
+    if (display) {
+      var rm = $('uploadRefreshMode');
+      if (rm) url += '&mode=' + encodeURIComponent(rm.value);
+    }
+    if (note) url += '&note=' + encodeURIComponent(note);
+
+    var r = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type':'application/octet-stream'},
+      body: buf
+    });
+    var resp = await r.text();
+    if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + resp);
+
+    // 生成并上传缩略图（静默失败不影响主流程）
+    try {
+      var thumbBuf = generateThumb(new Uint8Array(buf));
+      await fetch('/bins/thumb_upload/' + targetSlot + '?storage=' + storage, {
+        method: 'POST',
+        headers: {'Content-Type':'application/octet-stream'},
+        body: thumbBuf
+      });
+    } catch(te){}
+
+    setStatus(
+      (display ? '上传并显示' : '仅上传') + '完成 ✓ ' + storageLabel(storage) + ' 槽位 ' + (targetSlot+1) +
+      '（' + resp + ' 字节）' + (note ? ' · 备注：' + note : ''), 'ok');
+
+    // 如果是新建，刷新一下列表并重置
+    if (isNew) {
+      var d = await fetchBins();
+      if (d) { currentBins = d; currentUploadTarget = {mode:'new', storage: storage}; }
+    }
+    $('noteInput').value = '';
+    $('f').value = '';
+    renderUploadTargets();
+    updateUploadButton();
+  } catch(e){
+    setStatus('上传失败：' + e.message, 'err');
+  } finally {
+    busy = false;
+    updateUploadButton();
+  }
+}
+
+function generateThumb(bin){
+  var tw = 200, th = 120;
+  var thumb = new Uint8Array(tw * th / 8);
+  for (var ty = 0; ty < th; ty++){
+    var sy = ty * 4;
+    var srcBase = sy * 100;
+    var dstBase = ty * 25;
+    for (var tx = 0; tx < tw; tx++){
+      var sx = tx * 4;
+      var b = bin[srcBase + (sx >> 3)];
+      var is_white = (b >> (7 - (sx & 7))) & 1;
+      if (is_white) thumb[dstBase + (tx >> 3)] |= (0x80 >> (tx & 7));
+      else thumb[dstBase + (tx >> 3)] &= ~(0x80 >> (tx & 7));
+    }
+  }
+  return thumb;
+}
+
+async function init(){
+  var params = new URLSearchParams(location.search);
+  var pStorage = params.get('storage');
+  var pIndex = params.get('index');
+
+  var d = await fetchBins();
+  if (!d) {
+    setStatus('读取 BIN 库失败，请检查网络', 'err');
+    return;
+  }
+  currentBins = d;
+
+  if (pStorage && pIndex !== null) {
+    var idx = parseInt(pIndex, 10);
+    var exists = currentBins.slots && currentBins.slots.some(function(s){
+      return s.storage === pStorage && s.index === idx;
+    });
+    if (exists) {
+      currentUploadTarget = { mode: 'existing', storage: pStorage, index: idx };
+      var slot = currentBins.slots.find(function(s){ return s.storage === pStorage && s.index === idx; });
+      if (slot && slot.note) $('noteInput').value = slot.note;
+    }
+  } else {
+    currentUploadTarget = { mode: 'new', storage: currentBins.sd_active ? 'sd' : 'flash' };
+  }
+
+  renderUploadTargets();
+  updateUploadButton();
+  setStatus('就绪', '');
+}
+
+$('f').addEventListener('change', updateUploadButton);
+$('uploadBtn').addEventListener('click', function(){ doUpload(true); });
+$('uploadOnlyBtn').addEventListener('click', function(){ doUpload(false); });
+
+init();
+
+})();
+</script>
+<script src="/display.js"></script>
+<script src="/nav.js"></script>
+</body>
+</html>

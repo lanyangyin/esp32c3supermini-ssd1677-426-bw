@@ -434,8 +434,10 @@ def _render_netinfo(bg_path):
 
     print('[BOOT] [4/4] 渲染到屏幕（背景 %s）…' % bg_path)
 
+    # 修复：传 epd 模块（有 init/begin_frame/write_chunk/end_frame/sleep），
+    # 而不是 epd._display（SSD1677 实例只有 init_display()）
     render_and_display_stream(
-        epd._display,
+        epd,
         text,
         size=32,
         direction=90,

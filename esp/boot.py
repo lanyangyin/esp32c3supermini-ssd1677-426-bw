@@ -1,4 +1,5 @@
-# boot.py — 先起 AP（配置入口永远在线），再扫描 STA（只连已知网络）
+# boot.py — 先起 AP（配置入口永远在线），再扫描 STA（只连已知网络），
+#           最后按 GPIO20/21 触发开机画面
 import gc
 import time
 import network
@@ -53,11 +54,6 @@ except Exception as e:
 # ============================================================
 # 3. STA 预热 + 扫描 + 匹配 + 连接
 # ============================================================
-# 流程：
-#   1) sta.active(True) + sleep(2) —— 预热 PHY（冷启动关键）
-#   2) sta.scan() —— 一次扫描，得到可见 SSID 集合
-#   3) 只遍历 "已保存 ∩ 可见" —— 没匹配就完全不连
-#   4) 逐个 connect，任一成功即停（总超时 20 秒）
 sta_ok = False
 sta_ip = None
 
@@ -143,7 +139,6 @@ if nets:
 # ============================================================
 # 4. bind_ip：只要有 AP 或 STA 在，就 bind 0.0.0.0
 # ============================================================
-# 这样无论 AP 还是 STA 起，都能访问；STA 通过网页连上后也无需重启
 if ap_ip or sta_ok:
     bind_ip = "0.0.0.0"
     if sta_ok:
@@ -155,5 +150,20 @@ else:
     print('[BOOT] AP/STA 均未起，绑定 0.0.0.0 (可能无法访问)')
 
 gc.collect()
+
+# ============================================================
+# 5. 开机画面（GPIO20/21 模式检测 + 4 种动作）
+# ============================================================
+try:
+    import boot_screen
+    boot_screen.check_and_run()
+except Exception as e:
+    print('[BOOT] boot_screen 失败:', e)
+    try:
+        import sys
+        sys.print_exception(e)
+    except Exception:
+        pass
+
 print('[BOOT] 绑定目标 IP:', bind_ip)
 print('[BOOT] free:', gc.mem_free())

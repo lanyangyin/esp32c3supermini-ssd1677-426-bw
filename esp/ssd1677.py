@@ -1,4 +1,15 @@
 # ssd1677.py — 极简版（1bpp，支持全刷/快刷/局刷）
+#
+# ─── 硬件前提 ────────────────────────────────────────────────
+# 1. FPC pin 8 (BS1) 必须接地 → 4-wire SPI（D/C 独立引脚）
+# 2. FPC pin 15/16 (VDDIO/VCI) 接 3.3V，pin 17 (VSS) 接地
+# 3. SPI 使用 Mode 0（CPOL=0, CPHA=0）
+#
+# ─── 扫描方向 ───────────────────────────────────────────────
+# 0x01 第 3 字节 = 0x02  →  TB=1，panel 从 bottom 往 top 扫描
+# 0x11 data entry = 0x01 →  X 增 Y 增
+# cursor(0, 0) + window(0, h-1, w-1, 0)
+#
 import time
 from micropython import const
 
@@ -38,6 +49,8 @@ class SSD1677:
         self.busy.init(self.busy.IN, pull=self.busy.PULL_UP)
 
         self._in_stream = False
+        self._bytes_written = 0
+        self._frame_bytes = (width * height) // 8  # 1bpp
         self.init_display()
 
     def _cmd(self, command, *data):
@@ -51,7 +64,7 @@ class SSD1677:
 
     def _busy_wait(self):
         t0 = time.ticks_ms()
-        while self.busy.value():
+        while self.busy.value():  # BUSY 高 = 忙（手册 pin 9）
             if time.ticks_diff(time.ticks_ms(), t0) > 15000:
                 raise OSError("SSD1677: timed out")
             time.sleep_ms(20)
@@ -78,23 +91,35 @@ class SSD1677:
         self._cmd(_SET_RAM_Y_COUNTER, y & 0xFF, (y >> 8) & 0xFF)
 
     def init_display(self):
+        # 1. 硬件复位
         self._reset()
-        self._busy_wait()
+        time.sleep_ms(10)
+
+        # 2. SW 复位
         self._cmd(_SW_RESET)
         self._busy_wait()
-        self._cmd(0x18, 0x80)
-        self._cmd(0x0C, 0xAE, 0xC7, 0xC3, 0xC0, 0x80)
-        h = self.height
-        self._cmd(_DRIVER_OUTPUT_CONTROL, (h - 1) & 0xFF, ((h - 1) >> 8) & 0xFF, 0x02)
-        self._cmd(_BORDER_WAVEFORM_CONTROL, 0x01)
-        self._cmd(_DATA_ENTRY_MODE, 0x01)
 
+        # 3. 基本配置
+        self._cmd(0x18, 0x80)  # 内置温度传感器使能
+        self._cmd(0x0C, 0xAE, 0xC7, 0xC3, 0xC0, 0x80)  # boost soft start
+        h = self.height
+        self._cmd(_DRIVER_OUTPUT_CONTROL,
+                  (h - 1) & 0xFF, ((h - 1) >> 8) & 0xFF, 0x02)
+        self._cmd(_BORDER_WAVEFORM_CONTROL, 0x01)
+        self._cmd(_DATA_ENTRY_MODE, 0x01)  # X 增 Y 增
+
+        # 4. 清 RAM（手册 8.1 第 3 步；防首次上电随机像素）
+        self._cmd(0x46, 0xF7)  # clear BW RAM (0x24)
+        self._cmd(0x47, 0xF7)  # clear RED RAM (0x26)
+
+        # 5. 窗口 + cursor
         self._set_window(0, h - 1, self.width - 1, 0)
         self._set_cursor(0, 0)
         self._busy_wait()
 
     def begin_frame(self):
         self._in_stream = True
+        self._bytes_written = 0
         self._set_window(0, self.height - 1, self.width - 1, 0)
         self._set_cursor(0, 0)
         self.cs(0)
@@ -105,15 +130,20 @@ class SSD1677:
     def write_chunk(self, chunk):
         if not self._in_stream:
             raise OSError("Must call begin_frame() first")
+        if self._bytes_written + len(chunk) > self._frame_bytes:
+            raise ValueError(
+                "frame overflow: %d + %d > %d"
+                % (self._bytes_written, len(chunk), self._frame_bytes)
+            )
         self.spi.write(chunk)
+        self._bytes_written += len(chunk)
 
     def end_frame(self, mode='full'):
         """结束一帧并刷新。
-
         mode:
-          'full'    → 0xF7，全刷，4.2s，永久显示，无残影
-          'fast'    → 0xFF，快刷，0.9s，需 RED 基线，可能有轻微残影
-          'partial' → 0x91+0xFF+0x90，局刷，0.9s（全屏窗口包裹 partial 命令）
+          'full'    → 0xF7 全刷（约 3.5 s，永久显示，无残影）
+          'fast'    → 0xFF 快刷（约 0.9-1.5 s，可能有轻微残影）
+          'partial' → 0x91+0xFF+0x90（伪局刷：视觉上跟 fast 几乎一样）
         """
         if not self._in_stream:
             return

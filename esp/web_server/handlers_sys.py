@@ -19,7 +19,6 @@ from .utils import (
     _parse_content_length,
 )
 
-# 4×4 Bayer 有序抖动矩阵（0~15）
 _BAYER4 = (
     (0, 8, 2, 10),
     (12, 4, 14, 6),
@@ -63,12 +62,6 @@ def _norm_mode(raw):
 # ============================================================
 
 def handle_upload(conn, headers, body_prefix):
-    """接收 1bpp 数据并显示到屏幕。
-
-    query: ?mode=full | fast | partial（默认 full）
-
-    关键：先发送 HTTP 响应，再执行 end_frame()（阻塞 4.2s 或 0.9s）。
-    """
     mode = _norm_mode(_extract_query_param(headers, 'mode'))
 
     total_len = _parse_content_length(headers)
@@ -77,7 +70,6 @@ def handle_upload(conn, headers, body_prefix):
         return
 
     need = min(total_len, FRAME_BYTES)
-
     try:
         conn.settimeout(30)
     except Exception:
@@ -112,7 +104,6 @@ def handle_upload(conn, headers, body_prefix):
         err = str(e)
         print("[UPLOAD] epd init error:", e)
 
-    # 排空剩余数据（如果 total_len > need，多出的字节必须读掉，否则浏览器会 RST）
     prefix_len = len(body_prefix) if body_prefix else 0
     remaining = total_len - prefix_len
     already_from_conn = epd_written - min(prefix_len, need)
@@ -144,7 +135,36 @@ def handle_upload(conn, headers, body_prefix):
 
 
 # ============================================================
-# 灰度测试（默认 full，保证持续显示）
+# 去除残影 (全屏刷白)
+# ============================================================
+
+def handle_clear_display(conn, headers):
+    mode = _norm_mode(_extract_query_param(headers, 'mode'))
+    try:
+        conn.settimeout(30)
+    except Exception:
+        pass
+
+    try:
+        epd.init()
+        epd.begin_frame()
+        row = b'\xFF' * 100
+        for _ in range(480):
+            epd.write_chunk(row)
+        epd.end_frame(mode)
+        epd.sleep()
+        _send(conn, b"200 OK", b"OK")
+    except Exception as e:
+        print("[CLEAR] error:", e)
+        try:
+            epd.sleep()
+        except Exception:
+            pass
+        _send(conn, b"500 Internal Server Error", str(e).encode())
+
+
+# ============================================================
+# 灰度测试
 # ============================================================
 
 def handle_gray_test(conn, headers):
