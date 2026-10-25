@@ -65,16 +65,30 @@ def render_console(text, size=32, direction=0,
         try:
             import epd
             epd.init()
-
-            # 4bpp 800x480：每行 400 字节，共 480 行
-            W_BYTES = 800 // 2
-            for y in range(480):
-                start_idx = y * W_BYTES
-                end_idx = start_idx + W_BYTES
-                epd._display.buffer[start_idx:end_idx] = bin_data[start_idx:end_idx]
-
-            epd.show()
-            epd.sleep()
+            epd.begin_frame()
+            try:
+                # bin_data 是 4bpp，需转 1bpp
+                W_BYTES = 800 // 2  # 4bpp 每行 400 字节
+                BAYER = ((0, 8, 2, 10), (12, 4, 14, 6),
+                         (3, 11, 1, 9), (15, 7, 13, 5))
+                for y in range(480):
+                    start_idx = y * W_BYTES
+                    row = bytearray(100)
+                    for bi in range(100):
+                        bv = 0
+                        base_x = bi * 8
+                        for bit in range(8):
+                            idx = (base_x + bit) >> 1
+                            b = bin_data[start_idx + idx]
+                            v = (b & 0xF) if (base_x + bit) & 1 else ((b >> 4) & 0xF)
+                            thr = BAYER[y & 3][(base_x + bit) & 3]
+                            if v * 17 > thr * 16 + 8:
+                                bv |= 0x80 >> bit
+                        row[bi] = bv
+                    epd.write_chunk(bytes(row))
+            finally:
+                epd.end_frame()
+                epd.sleep()
             print("已显示到屏幕")
         except ImportError:
             print("EPD 驱动不可用，跳过显示")

@@ -111,7 +111,6 @@
     color:#fff;
   }
 
-  /* 灰度色板 */
   .swatch-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:2px}
   .swatch{
     position:relative;aspect-ratio:1;border-radius:2px;
@@ -154,7 +153,6 @@
     pointer-events:none;
   }
 
-  /* 文字预览框 */
   .text-preview-box{
     border:1px solid var(--line);
     border-radius:4px;
@@ -358,16 +356,22 @@
 console.log('[E6 Editor] script start');
 
 const W = 800, H = 480;
-const FRAME_BYTES = W * H / 2; // 192000
+const FRAME_BYTES = 48000; // 1bpp
 const TRANSPARENT = 255;
-const THUMB_W = 200, THUMB_H = 120;
-const THUMB_BYTES = (THUMB_W * THUMB_H) / 2; // 12000
 
 const PALETTE = [];
 for(let i=0; i<16; i++) {
   const c = (i * 17).toString(16).padStart(2, '0');
   PALETTE.push('#' + c + c + c);
 }
+
+// 4x4 Bayer 抖动矩阵
+const BAYER = [
+  [ 0,  8,  2, 10],
+  [12,  4, 14,  6],
+  [ 3, 11,  1,  9],
+  [15,  7, 13,  5]
+];
 
 let binLayer = new Uint8Array(W * H);
 let drawLayer = new Uint8Array(W * H);
@@ -431,9 +435,7 @@ function render() {
     if (v === TRANSPARENT) v = binLayer[i];
     if (v === TRANSPARENT) v = bgColorIdx;
 
-    // 灰度值转 RGB
     const c = v * 17;
-
     d[i*4]   = c;
     d[i*4+1] = c;
     d[i*4+2] = c;
@@ -442,48 +444,40 @@ function render() {
   ctxMain.putImageData(img, 0, 0);
 }
 
+// 加载 1bpp 数据解包为 16 级灰度
 function unpack(buf) {
   const out = new Uint8Array(W * H);
   let k = 0;
   for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x += 2) {
+    for (let x = 0; x < W; x += 8) {
       const b = buf[k++];
-      out[y*W + x]     = (b >> 4) & 0xF;
-      out[y*W + x + 1] = b & 0xF;
+      for (let bit = 0; bit < 8; bit++) {
+        out[y*W + x + bit] = (b & (0x80 >> bit)) ? 15 : 0;
+      }
     }
   }
   return out;
 }
 
+// 打包为 1bpp 数据（带 Bayer 抖动）
+// 修复：v 是 0..15 的灰度索引，Bayer 阈值需要映射到 0..255 再比较
+//   v=15 → 255 > 248 恒为白，v=0 → 0 > 8 恒为黑
 function packLayers() {
   const buf = new Uint8Array(FRAME_BYTES);
   let k = 0;
   for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x += 2) {
-      const i0 = resolveIndex(x, y) & 0x0F;
-      const i1 = resolveIndex(x+1, y) & 0x0F;
-      buf[k++] = (i0 << 4) | i1;
+    for (let x = 0; x < W; x += 8) {
+      let byte_val = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const v = resolveIndex(x + bit, y);
+        if (v * 17 > BAYER[y % 4][(x + bit) % 4] * 16 + 8) {
+          byte_val |= (0x80 >> bit);
+        }
+      }
+      buf[k++] = byte_val;
     }
   }
   return buf;
-}
-
-function generateThumb(bin){
-  var tw = THUMB_W, th = THUMB_H;
-  var thumb = new Uint8Array(tw * th / 2);
-  for (var ty = 0; ty < th; ty++){
-    var sy = ty * 4;
-    var srcBase = sy * 400;
-    var dstBase = ty * 100;
-    for (var tx = 0; tx < tw; tx++){
-      var sx = tx * 4;
-      var b = bin[srcBase + (sx >> 1)];
-      var nib = (sx & 1) ? (b & 0xF) : ((b >> 4) & 0xF);
-      if (tx & 1) thumb[dstBase + (tx >> 1)] |= nib;
-      else        thumb[dstBase + (tx >> 1)]  = (nib << 4);
-    }
-  }
-  return thumb;
 }
 
 function getCanvasCoord(e) {
@@ -803,17 +797,13 @@ function drawTextToDrawLayer(x, y) {
   off.width = W; off.height = H;
   const octx = off.getContext('2d');
 
-  // 用白色作为文字色，通过 alpha 通道混合
   drawTextOnCanvas(octx, x, y, m, '#fff');
 
   const img = octx.getImageData(0, 0, W, H);
   const d = img.data;
   let count = 0;
   for (let i = 0; i < W * H; i++) {
-    const alpha = d[i*4 + 3];
-    if (alpha > 0) {
-      // 混合算法：如果背景是透明的，则直接使用当前画笔色 * alpha
-      // 否则，简化处理：只要有透明度，就直接涂上画笔色（不做复杂的图层混合）
+    if (d[i*4 + 3] > 0) {
       drawLayer[i] = currentColor;
       count++;
     }
@@ -953,7 +943,6 @@ function bindEvents() {
     );
   });
 
-  // ---- 文字相关：所有参数变化都刷新预览 ----
   $('textInput').addEventListener('input', () => {
     renderTextPreviewBox();
     if (textModeActive) ctxOverlay.clearRect(0, 0, W, H);
@@ -1054,7 +1043,7 @@ function bindEvents() {
       a.download = 'image_' + Date.now() + '.bin';
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
-      setStatus('已保存 ' + buf.length + ' 字节', 'ok');
+      setStatus('已保存 ' + buf.length + ' 字节（1bpp 抖动）', 'ok');
     } catch (e) {
       setStatus('保存失败：' + e.message, 'err');
     }

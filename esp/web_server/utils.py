@@ -5,8 +5,8 @@ import os
 import json
 import epd
 
-# ---------- 全局配置 ----------
-FRAME_BYTES = 800 * 480 // 2  # 192000 (4bpp)
+# 1bpp：800 * 480 / 8 = 48000 字节（原注释写 96000 是错的）
+FRAME_BYTES = 800 * 480 // 8  # 48000
 CHUNK = 400 * 11
 MAX_BINS_SOFT = 10000
 MAX_BGS_SOFT = 10000
@@ -15,8 +15,8 @@ BOOT_CFG_PATH = '/boot_cfg.json'
 
 THUMB_W = 200
 THUMB_H = 120
-THUMB_ROW_BYTES = THUMB_W // 2  # 100
-THUMB_SIZE = THUMB_ROW_BYTES * THUMB_H  # 12000
+THUMB_ROW_BYTES = THUMB_W // 8  # 25 (1bpp)
+THUMB_SIZE = THUMB_ROW_BYTES * THUMB_H  # 3000
 
 CORS_HEADERS = (
     b"Access-Control-Allow-Origin: *\r\n"
@@ -41,9 +41,6 @@ MIME_MAP = {
 }
 
 
-# ============================================================
-# 适配器
-# ============================================================
 class EpdStreamAdapter:
     def __init__(self, epd_mod):
         self.epd = epd_mod
@@ -64,9 +61,6 @@ class EpdStreamAdapter:
         self.epd.sleep()
 
 
-# ============================================================
-# 路径与存储工具
-# ============================================================
 def _ensure_dir(path):
     try:
         os.mkdir(path)
@@ -217,9 +211,6 @@ def _remove_thumb_for(bin_path):
         pass
 
 
-# ============================================================
-# HTTP 底层工具
-# ============================================================
 def _mime_of(path):
     for ext, mime in MIME_MAP.items():
         if path.endswith(ext):
@@ -240,6 +231,26 @@ def _send(conn, status, body, content_type=b"text/plain"):
     conn.send(headers)
     if body:
         conn.send(body)
+
+
+def _send_response_only(conn, status, body, content_type=b"text/plain; charset=utf-8"):
+    """只发送 HTTP 响应，调用方之后继续使用 conn 或让 server 的 finally 关闭。
+
+    用途：先响应避免浏览器 RST，再执行 end_frame()（阻塞 10~15 秒）。
+    """
+    body = body if isinstance(body, bytes) else str(body).encode()
+    try:
+        conn.send(b"HTTP/1.1 " + status + b"\r\n")
+        conn.send(b"Content-Type: " + content_type + b"\r\n")
+        conn.send(b"Content-Length: " + str(len(body)).encode() + b"\r\n")
+        conn.send(CORS_HEADERS)
+        conn.send(b"Connection: close\r\n\r\n")
+        if body:
+            conn.send(body)
+        return True
+    except Exception as e:
+        print("[WEB] send_response_only error:", e)
+        return False
 
 
 def _send_json(conn, data, status=b"200 OK"):
@@ -321,7 +332,7 @@ def _send_thumb(conn, src_path, cache_seconds=3600):
         b"Connection: close\r\n\r\n"
     )
 
-    SRC_ROW_BYTES = 400
+    SRC_ROW_BYTES = 100
     BLOCK_H = 4
 
     try:
@@ -335,17 +346,17 @@ def _send_thumb(conn, src_path, cache_seconds=3600):
                 if n is None or n < BLOCK_H * SRC_ROW_BYTES:
                     break
 
-                src_row_off = 0
                 for tx in range(THUMB_W):
                     sx = tx * 4
-                    byte_idx = src_row_off + (sx >> 1)
-                    src_byte = src_buf[byte_idx]
-                    nib = (src_byte >> 4) if (sx & 1) == 0 else (src_byte & 0x0F)
+                    byte_idx = (sx >> 3)
+                    bit_idx = 7 - (sx & 7)
+                    b = src_buf[byte_idx]
+                    is_white = (b >> bit_idx) & 1
 
-                    if tx & 1:
-                        out_row[tx >> 1] |= nib
+                    if not is_white:
+                        out_row[tx >> 3] |= (0x80 >> (tx & 7))
                     else:
-                        out_row[tx >> 1] = (nib << 4)
+                        out_row[tx >> 3] &= ~(0x80 >> (tx & 7))
 
                 off = 0
                 while off < THUMB_ROW_BYTES:
@@ -368,15 +379,18 @@ def _read_request(conn):
     return buf[:idx], buf[idx:]
 
 
-def _read_body(conn, headers, body_prefix):
-    cl = 0
+def _parse_content_length(headers):
     for line in headers.split(b"\r\n"):
         if line.lower().startswith(b"content-length:"):
             try:
-                cl = int(line.split(b":", 1)[1].strip())
+                return int(line.split(b":", 1)[1].strip())
             except Exception:
-                cl = 0
-            break
+                return 0
+    return 0
+
+
+def _read_body(conn, headers, body_prefix):
+    cl = _parse_content_length(headers)
     chunks = []
     if body_prefix:
         chunks.append(bytes(body_prefix))
@@ -468,11 +482,16 @@ def _parse_int_after(headers, path_prefix, max_val=None):
         return None
 
 
-# ============================================================
-# 补充遗漏的文件接收函数
-# ============================================================
-def _receive_to_file(conn, path, body_prefix):
-    """接收 192000 字节的 4bpp 数据并保存到文件"""
+def _receive_to_file(conn, path, body_prefix, total_len=None, store_len=None):
+    """接收数据保存到文件。
+
+    total_len：HTTP body 总长度（Content-Length）。如果指定，会读取完整的
+               body（包括超出 store_len 的部分并丢弃），避免浏览器 RST。
+    store_len：只保存前 store_len 字节（默认 FRAME_BYTES）。
+    """
+    if store_len is None:
+        store_len = FRAME_BYTES
+
     try:
         os.remove(path)
     except OSError:
@@ -483,22 +502,37 @@ def _receive_to_file(conn, path, body_prefix):
         return (False, 0, "open fail: " + str(e))
 
     received = 0
-    total = FRAME_BYTES
+    stored = 0
     chunk_size = 1024
+
     try:
         if body_prefix:
-            n = min(len(body_prefix), total)
-            f.write(body_prefix[:n])
+            n = len(body_prefix)
+            save_n = min(n, store_len)
+            if save_n > 0:
+                f.write(body_prefix[:save_n])
+                stored += save_n
             received += n
-        while received < total:
-            want = min(chunk_size, total - received)
+
+        if total_len is not None and total_len > 0:
+            need = total_len - received
+        else:
+            need = store_len - stored
+
+        while need > 0:
+            want = min(chunk_size, need)
             chunk = conn.recv(want)
             if not chunk:
                 break
-            f.write(chunk)
             received += len(chunk)
+            if stored < store_len:
+                save_n = min(len(chunk), store_len - stored)
+                f.write(chunk[:save_n])
+                stored += save_n
+            need -= len(chunk)
             if (received % 32768) < chunk_size:
                 gc.collect()
+
         try:
             f.flush()
         except Exception:
@@ -515,4 +549,27 @@ def _receive_to_file(conn, path, body_prefix):
             pass
         return (False, received, str(e))
     gc.collect()
-    return (True, received, "")
+    return (True, stored, "")
+
+
+def _handle_thumb_upload(conn, kind, slot, headers, body_prefix):
+    storage = _storage_from_query(headers, default='flash')
+    if storage == 'sd':
+        try:
+            os.stat("/sd")
+        except OSError:
+            _send(conn, b"400 Bad Request", b"sd not mounted")
+            return
+
+    bins_dir, bgs_dir = _get_storage_paths(storage)
+    d = bins_dir if kind == 'bins' else bgs_dir
+    _ensure_dir(d)
+    path = d + "/" + str(slot) + ".thumb"
+
+    total_len = _parse_content_length(headers)
+    ok, n, err = _receive_to_file(conn, path, body_prefix,
+                                  total_len=total_len, store_len=THUMB_SIZE)
+    if not ok:
+        _send(conn, b"507 Insufficient Storage", err.encode())
+        return
+    _send(conn, b"200 OK", str(n).encode())

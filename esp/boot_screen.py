@@ -50,7 +50,7 @@ GRAY_FILL = 'pseudo:0,1,4'  # 灰度版依然支持这个伪色指令，用于�
 TMP_BG_SD = '/sd/bgs/__boot_bg__.bin'
 TMP_BG_FLASH = '/bgs/__boot_bg__.bin'
 BOOT_CFG_PATH = '/boot_cfg.json'
-FRAME_BYTES = 800 * 480 // 2  # 192000 字节（4bpp 16级灰度）
+FRAME_BYTES = 800 * 480 // 8  # 48000 字节（1bpp）
 
 # 统一导入 epd，后续操作基于此实例
 import epd
@@ -287,6 +287,7 @@ def _ensure_dir(path):
 # ============================================================
 
 def _display_bin_file(path):
+    """流式显示 1bpp BIN 文件（48000 字节）。"""
     try:
         size = os.stat(path)[6]
     except OSError:
@@ -298,28 +299,36 @@ def _display_bin_file(path):
 
     print('[BOOT] 开始显示 %s（%d 字节，约 10~30 秒）…' % (path, size))
     epd.init()
-
-    # 由于 SSD1677 驱动使用 buffer 进行绘图，我们直接把文件内容塞入 buffer
-    # 如果内存紧张，可以分块读取然后写入底层的 SPI，但 192KB 的 buffer 对于 ESP32 来说是可以接受的
+    epd.begin_frame()
     try:
         with open(path, 'rb') as f:
-            chunk_size = 4096
-            offset = 0
             while True:
-                chunk = f.read(chunk_size)
+                chunk = f.read(4096)
                 if not chunk:
                     break
-                epd._display.buffer[offset:offset + len(chunk)] = chunk
-                offset += len(chunk)
-                if offset % 32768 == 0:
-                    gc.collect()
-
-        epd.show()
+                epd.write_chunk(chunk)
+                gc.collect()
     except Exception as e:
-        print('[BOOT] 显示失败:', e)
+        print('[BOOT] 写数据失败:', e)
+        try:
+            epd.end_frame()
+        except Exception:
+            pass
+        try:
+            epd.sleep()
+        except Exception:
+            pass
         return False
 
-    epd.sleep()
+    try:
+        epd.end_frame()
+    except Exception as e:
+        print('[BOOT] end_frame 失败:', e)
+        return False
+    try:
+        epd.sleep()
+    except Exception:
+        pass
     print('[BOOT] 显示完成')
     return True
 

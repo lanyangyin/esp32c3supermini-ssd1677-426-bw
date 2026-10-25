@@ -174,16 +174,33 @@ def show(text="Hello 16-Level Gray!\nESP32 SSD1677 OK",
 
     print('[draw_test] 写入屏幕…')
     epd.init()
-
-    # 4bpp 800x480：每行 400 字节，共 480 行
-    W_BYTES = 800 // 2
-    for y in range(480):
-        start_idx = y * W_BYTES
-        end_idx = start_idx + W_BYTES
-        epd._display.buffer[start_idx:end_idx] = bin_data[start_idx:end_idx]
-
-    epd.show()
-    epd.sleep()
+    epd.begin_frame()
+    try:
+        W_BYTES = 800 // 2  # 4bpp 输出每行 400 字节
+        # 注意：bin_data 是 4bpp（每像素 4bit），需要转成 1bpp 再写
+        # 这里的渲染结果需要先经过 Bayer 抖动打包为 1bpp
+        # 简化：直接把 4bpp 数据丢弃，仅作为占位；建议改用 render_and_display_stream
+        for y in range(480):
+            start_idx = y * W_BYTES
+            end_idx = start_idx + W_BYTES
+            # 用 _pack_row 风格把 4bpp 转为 1bpp（这里简化处理）
+            row = bytearray(100)
+            for bi in range(100):
+                bv = 0
+                base_x = bi * 8
+                for bit in range(8):
+                    idx = (base_x + bit) >> 1
+                    b = bin_data[start_idx + idx]
+                    v = (b & 0xF) if (base_x + bit) & 1 else ((b >> 4) & 0xF)
+                    thr = ((0, 8, 2, 10), (12, 4, 14, 6),
+                           (3, 11, 1, 9), (15, 7, 13, 5))[y & 3][(base_x + bit) & 3]
+                    if v * 17 > thr * 16 + 8:
+                        bv |= 0x80 >> bit
+                row[bi] = bv
+            epd.write_chunk(bytes(row))
+    finally:
+        epd.end_frame()
+        epd.sleep()
 
     print('[draw_test] 完成')
     return True

@@ -296,8 +296,8 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
 
   <div class="section-title">系统</div>
   <div class="panel" style="gap:8px">
-    <div class="kv"><span>设备型号</span><span class="v">SSD1677 800×480 (16-Level Gray)</span></div>
-    <div class="kv"><span>帧数据</span><span class="v">192000 字节</span></div>
+    <div class="kv"><span>设备型号</span><span class="v">SSD1677 800×480 (1bpp)</span></div>
+    <div class="kv"><span>帧数据</span><span class="v">96000 字节</span></div>
     <div class="kv"><span>网络</span><span class="v" id="netSummary">—</span></div>
     <div class="kv"><span>SD 卡剩余</span><span class="v" id="freeSd">—</span></div>
     <div class="kv"><span>Flash 剩余</span><span class="v" id="freeFlash">—</span></div>
@@ -365,9 +365,9 @@ var $ = function(id){ return document.getElementById(id); };
 var PAGE_TITLES = { home:'E6 Panel', upload:'上传 BIN', colors:'灰度测试' };
 var busy = false;
 
-var FRAME_BYTES = 192000;
+var FRAME_BYTES = 48000;
 var THUMB_W = 200, THUMB_H = 120;
-var THUMB_BYTES = (THUMB_W * THUMB_H) / 2;  // 12000
+var THUMB_BYTES = (THUMB_W * THUMB_H) / 8;  // 3000
 var MAX_NOTE = 200;
 
 var currentBins = null;
@@ -380,53 +380,49 @@ function storageTag(s){
   return '<span class="storage-tag ' + s + '">' + storageLabel(s) + '</span>';
 }
 
-/* ★ 生成缩略图：192000 → 12000 (800x480 4bpp -> 200x120 4bpp) */
 function generateThumb(bin){
   var tw = THUMB_W, th = THUMB_H;
-  var thumb = new Uint8Array(tw * th / 2);
+  var thumb = new Uint8Array(tw * th / 8);
   for (var ty = 0; ty < th; ty++){
     var sy = ty * 4;
-    var srcBase = sy * 400;
-    var dstBase = ty * 100;
+    var srcBase = sy * 100;
+    var dstBase = ty * 25;
     for (var tx = 0; tx < tw; tx++){
       var sx = tx * 4;
-      var b = bin[srcBase + (sx >> 1)];
-      var nib = (sx & 1) ? (b & 0xF) : ((b >> 4) & 0xF);
-      if (tx & 1) thumb[dstBase + (tx >> 1)] |= nib;
-      else        thumb[dstBase + (tx >> 1)]  = (nib << 4);
+      var b = bin[srcBase + (sx >> 3)];
+      var is_white = (b >> (7 - (sx & 7))) & 1;
+      if (is_white) {
+        thumb[dstBase + (tx >> 3)] |= (0x80 >> (tx & 7));
+      } else {
+        thumb[dstBase + (tx >> 3)] &= ~(0x80 >> (tx & 7));
+      }
     }
   }
   return thumb;
 }
 
-function render4bppToCanvas(bin, canvas, w, h){
+function render1bppToCanvas(bin, canvas, w, h){
   canvas.width = w;
   canvas.height = h;
   var ctx = canvas.getContext('2d');
   var img = ctx.createImageData(w, h);
   var d = img.data;
-  var rowBytes = w >> 1;
+  var rowBytes = w >> 3;
   for (var y = 0; y < h; y++){
     var rowBase = y * rowBytes;
     var pixBase = y * w * 4;
     for (var xb = 0; xb < rowBytes; xb++){
       var b = bin[rowBase + xb];
-      var hi = (b >> 4) & 0xF;
-      var lo = b & 0xF;
-
-      var c0 = hi * 17;
-      var c1 = lo * 17;
-
-      var o0 = pixBase + xb * 8;
-      var o1 = o0 + 4;
-      d[o0]=c0; d[o0+1]=c0; d[o0+2]=c0; d[o0+3]=255;
-      d[o1]=c1; d[o1+1]=c1; d[o1+2]=c1; d[o1+3]=255;
+      for (var bit = 0; bit < 8; bit++) {
+        var isWhite = (b & (0x80 >> bit)) ? 255 : 0;
+        var px = xb * 8 + bit;
+        var o = pixBase + px * 4;
+        d[o]=isWhite; d[o+1]=isWhite; d[o+2]=isWhite; d[o+3]=255;
+      }
     }
   }
   ctx.putImageData(img, 0, 0);
 }
-
-/* ===== 缩略图串行队列 ===== */
 
 var thumbQueue = [];
 var thumbProcessing = false;
@@ -472,14 +468,12 @@ async function loadThumb(slot, storage, canvas){
     if (!r.ok) return;
     var buf = new Uint8Array(await r.arrayBuffer());
     if (buf.length !== THUMB_BYTES) return;
-    render4bppToCanvas(buf, canvas, THUMB_W, THUMB_H);
+    render1bppToCanvas(buf, canvas, THUMB_W, THUMB_H);
     canvas.classList.remove('placeholder');
   } catch(e){
     console.warn('thumb load fail', slot, e);
   }
 }
-
-/* ===== 开机指定 BIN ===== */
 
 async function loadBootBin(){
   var el = $('bootBinInfo');
@@ -533,7 +527,6 @@ async function clearBootBin(){
   }
 }
 
-/* ===== 加载动画 ===== */
 function showLoading(text){
   $('loadingText').textContent = text || '处理中…';
   $('loadingOverlay').classList.add('show');
@@ -541,8 +534,6 @@ function showLoading(text){
 function hideLoading(){
   $('loadingOverlay').classList.remove('show');
 }
-
-/* ---------- bins 网格 ---------- */
 
 async function fetchBins(){
   try {
@@ -737,7 +728,6 @@ async function transferSlot(slot){
   showLoading('正在转移 ' + srcLabel + ' → ' + targetLabel + '…');
 
   try {
-    // 读源 bin
     var srcUrl = '/bins/get/' + slot.index + '?storage=' + slot.storage;
     var srcResp = await fetch(srcUrl, {cache:'no-store'});
     if (!srcResp.ok) throw new Error('读取源文件失败：HTTP ' + srcResp.status);
@@ -751,7 +741,6 @@ async function transferSlot(slot){
       });
     }
 
-    // 上传到目标
     var upUrl = '/bins/upload/' + targetIdx + '?storage=' + targetStorage;
     var note = slot.note || '';
     if (note) upUrl += '&note=' + encodeURIComponent(note);
@@ -763,7 +752,6 @@ async function transferSlot(slot){
     });
     if (!upResp.ok) throw new Error('上传到目标失败：HTTP ' + upResp.status);
 
-    // ★ 同时把 thumb 一并转移
     var thumbBuf = generateThumb(new Uint8Array(buf));
     try {
       await fetch('/bins/thumb_upload/' + targetIdx + '?storage=' + targetStorage, {
@@ -771,9 +759,8 @@ async function transferSlot(slot){
         headers: {'Content-Type':'application/octet-stream'},
         body: thumbBuf
       });
-    } catch(_) { /* thumb 失败可忽略 */ }
+    } catch(_) { }
 
-    // 删除源
     var delResp = await fetch('/bins/delete/' + slot.index + '?storage=' + slot.storage, {method:'POST'});
     if (!delResp.ok) throw new Error('删除源槽位失败：HTTP ' + delResp.status);
 
@@ -853,8 +840,6 @@ function showOverlay(slot, thumbCanvas){
   };
   document.addEventListener('keydown', esc);
 }
-
-/* ---------- 上传页 ---------- */
 
 function nextFreeSlot(storage){
   var n = 0;
@@ -1004,7 +989,6 @@ async function doUpload(display){
     var url = endpoint + targetSlot + '?storage=' + storage;
     if (note) url += '&note=' + encodeURIComponent(note);
 
-    // 1. 传 bin
     var r = await fetch(url, {
       method: 'POST',
       headers: {'Content-Type':'application/octet-stream'},
@@ -1013,7 +997,6 @@ async function doUpload(display){
     var resp = await r.text();
     if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + resp);
 
-    // 2. 传 thumb（浏览器生成，失败不阻塞）
     try {
       var thumbBuf = generateThumb(new Uint8Array(buf));
       await fetch('/bins/thumb_upload/' + targetSlot + '?storage=' + storage, {
@@ -1025,7 +1008,6 @@ async function doUpload(display){
       console.warn('thumb upload fail', te);
     }
 
-    // 3. 更新本地列表
     if (currentBins && currentBins.slots){
       if (isNew){
         currentBins.slots.push({
@@ -1066,8 +1048,6 @@ async function doUpload(display){
     updateUploadButton();
   }
 }
-
-/* ---------- 页面切换 ---------- */
 
 function switchPage(name){
   if (!PAGE_TITLES[name]) name = 'home';
@@ -1171,7 +1151,6 @@ refreshUploadTargets();
 
 })();
 </script>
-
 <script src="/nav.js"></script>
 </body>
 </html>

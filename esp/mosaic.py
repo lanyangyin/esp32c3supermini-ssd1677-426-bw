@@ -1,29 +1,24 @@
-# mosaic.py — 网格拼图（多级灰度 800x480，4bpp）
-#
-# 用法（REPL）：
-#   from mosaic import compose_and_display, compose_to_file, compose_bytes
-#
-#   # 2×2 拼图
-#   grid = [
-#       ['/bgs/0.bin',  'solid:15'],          # 背景图 + 白
-#       ['solid:8', '/bins/0.bin'],           # 中灰 + BIN
-#   ]
-#   compose_and_display(grid)
+# mosaic.py — 网格拼图（1bpp 800x480）
 #
 # src 格式：
-#   '/path/to/N.bin'     文件源（800x480 4bpp 灰度）
+#   '/path/to/N.bin'     文件源（1bpp，48000 字节）
 #   'solid:N'            纯色填充，N=0~15（0=黑，15=白）
 #   None 或 ''           默认为白（15）
-#
-# 每一格显示"源 bin 同位置"的图像；纯色则按该位置的灰度值填充。
-# 内存策略：逐行处理 + 句柄缓存，8×8=64 格时峰值 < 5KB。
 
 import gc
 
 W, H = 800, 480
-FRAME_BYTES = W * H // 2  # 192000
+FRAME_BYTES = W * H // 8  # 48000 (1bpp)
 MAX_CELLS = 64
 WHITE_IDX = 15
+
+# 4×4 Bayer 矩阵
+BAYER = (
+    (0,  8,  2, 10),
+    (12, 4, 14,  6),
+    (3, 11,  1,  9),
+    (15, 7, 13,  5),
+)
 
 
 def _norm_grid(grid):
@@ -43,10 +38,6 @@ def _boundaries(total, n):
 
 
 def _parse_src(src):
-    """返回 (kind, params)。
-    kind = 'solid'  → params = (idx,)
-    kind = 'empty'  → params = None
-    """
     if not src or not isinstance(src, str):
         return ('empty', None)
     if src.startswith('solid:'):
@@ -67,7 +58,6 @@ def _iter_rows(grid):
     col_x = _boundaries(W, cols)
     row_y = _boundaries(H, rows)
 
-    # 预解析每格：cell_specs = [(ry, cx, kind, params)]
     cell_specs = []
     handles = {}
     try:
@@ -85,7 +75,6 @@ def _iter_rows(grid):
                             params = None
                 cell_specs.append((ry, cx, kind, params))
 
-        # 每行属于哪个 ry
         row_of = [0] * H
         for ry in range(rows):
             for y in range(row_y[ry], row_y[ry + 1]):
@@ -96,7 +85,6 @@ def _iter_rows(grid):
 
         for out_y in range(H):
             ry = row_of[out_y]
-            # 先用白色填满整行
             for x in range(W):
                 out_row[x] = WHITE_IDX
 
@@ -116,33 +104,38 @@ def _iter_rows(grid):
                         out_row[x] = idx
                 elif kind == 'file':
                     f = handles[params]
-                    # 每个像素 4bit，800 像素 = 400 字节每行
-                    byte_start = x0 >> 1
-                    byte_end = (x1 + 1) >> 1
+                    # 1bpp：每行 100 字节
+                    byte_start = x0 >> 3
+                    byte_end = (x1 + 7) >> 3
                     byte_count = byte_end - byte_start
                     if byte_count <= 0:
                         continue
                     try:
-                        f.seek(out_y * 400 + byte_start)
+                        f.seek(out_y * 100 + byte_start)
                         line = f.read(byte_count)
                     except Exception:
                         continue
                     n = len(line)
                     for x in range(x0, x1):
-                        bi = (x >> 1) - byte_start
+                        bi = (x >> 3) - byte_start
                         if bi < 0 or bi >= n:
                             continue
                         bval = line[bi]
-                        # 提取 4bit 灰度值
-                        nib = (bval & 0xF) if (x & 1) else ((bval >> 4) & 0xF)
-                        out_row[x] = nib
+                        bit = 7 - (x & 7)
+                        v = (bval >> bit) & 1
+                        out_row[x] = 15 if v else 0
 
-            # 将 800 像素打包为 400 字节（4bpp）
-            packed = bytearray(400)
-            for i in range(0, W, 2):
-                hi = out_row[i] & 0x0F
-                lo = out_row[i + 1] & 0x0F
-                packed[i >> 1] = (hi << 4) | lo
+            # 打包 1bpp（Bayer 抖动，0..15 灰度 → 1bpp）
+            packed = bytearray(100)
+            for bi in range(100):
+                bv = 0
+                base_x = bi * 8
+                for bit in range(8):
+                    v = out_row[base_x + bit]
+                    # v(0..15) 映射到 0..255，Bayer 映射到 0..248 中间值
+                    if v * 17 > BAYER[out_y & 3][(base_x + bit) & 3] * 16 + 8:
+                        bv |= 0x80 >> bit
+                packed[bi] = bv
             yield bytes(packed)
 
             if out_y % 40 == 0:
@@ -157,7 +150,6 @@ def _iter_rows(grid):
 
 
 def compose_to_file(grid, path):
-    """流式写文件。返回写入字节数。"""
     n = 0
     with open(path, 'wb') as f:
         for row in _iter_rows(grid):
@@ -167,7 +159,6 @@ def compose_to_file(grid, path):
 
 
 def compose_bytes(grid):
-    """返回完整 bytes（192000）。"""
     out = bytearray(FRAME_BYTES)
     pos = 0
     for row in _iter_rows(grid):
@@ -176,17 +167,16 @@ def compose_bytes(grid):
     return bytes(out)
 
 
-def compose_and_display(grid, epd=None):
-    """流式显示到屏幕。"""
-    if epd is None:
-        import epd
+def compose_and_display(grid, epd_mod=None):
+    """流式显示到屏幕（1bpp，用 EPD 的流式 API）。"""
+    if epd_mod is None:
+        import epd as epd_mod
 
-    epd.init()
-
+    epd_mod.init()
+    epd_mod.begin_frame()
     try:
-        for i, row in enumerate(_iter_rows(grid)):
-            start_idx = i * 400
-            epd._display.buffer[start_idx:start_idx + 400] = row
+        for row in _iter_rows(grid):
+            epd_mod.write_chunk(row)
     finally:
-        epd.show()
-        epd.sleep()
+        epd_mod.end_frame()
+        epd_mod.sleep()

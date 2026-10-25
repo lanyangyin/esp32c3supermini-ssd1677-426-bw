@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ASCII 文本编辑 (16级灰度)</title>
+<title>ASCII 文本编辑 (1bpp)</title>
 <style>
   :root{
     color-scheme:dark;
@@ -20,7 +20,6 @@
     font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;
   }
 
-  /* 左右分栏布局 */
   main{
     display:grid;
     grid-template-columns: 400px 1fr;
@@ -28,7 +27,6 @@
     overflow:hidden;
   }
 
-  /* 左侧控制面板 */
   aside{
     border-right: 1px solid var(--line);
     background: var(--panel);
@@ -40,7 +38,6 @@
     gap: 12px;
   }
 
-  /* 右侧画布区 */
   .canvas-workspace{
     background: #0a0a08;
     display: flex;
@@ -101,7 +98,6 @@
   .row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
   .row-4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px}
 
-  /* 颜色选择区 */
   .color-mode{display:flex;gap:3px;margin-bottom:6px}
   .color-mode button{
     flex:1;padding:6px 4px;font-size:11px;font-weight:600;
@@ -129,7 +125,6 @@
     pointer-events:none;text-align:center;line-height:1;
   }
 
-  /* 字符多选区 */
   .chars-strip{
     display:flex;flex-wrap:wrap;gap:3px;padding:6px;
     background:var(--panel);border:1px solid var(--line);border-radius:4px;
@@ -209,7 +204,6 @@
   }
   .line-setting-row .unit { color: var(--subtle); }
 
-  /* 遮罩层 */
   .font-loading-overlay{
     position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1500;
     display:flex;align-items:center;justify-content:center;opacity:0;visibility:hidden;
@@ -241,12 +235,11 @@
 <header style="padding:10px 14px;border-bottom:1px solid var(--line);background:#1b1a17;min-height:48px;display:flex;align-items:center;">
   <h1 style="margin:0;font-size:15px;display:flex;align-items:center;gap:8px;">
     <span style="display:inline-block;width:10px;height:14px;border:2px solid var(--accent-strong)"></span>
-    ASCII 文本编辑 (16级灰度)
+    ASCII 文本编辑 (1bpp)
   </h1>
 </header>
 
 <main>
-  <!-- 左侧控制面板 -->
   <aside>
     <fieldset>
       <legend>内容</legend>
@@ -396,7 +389,6 @@
     </fieldset>
   </aside>
 
-  <!-- 右侧画布区 -->
   <section class="canvas-workspace">
     <div class="canvas-frame">
       <canvas id="previewCanvas" width="800" height="480"></canvas>
@@ -422,14 +414,15 @@
 
 const W = 800, H = 480;
 const THUMB_W = 200, THUMB_H = 120;
-const THUMB_BYTES = (THUMB_W * THUMB_H) / 2;
-const FRAME_BYTES = W * H / 2;
+const THUMB_BYTES = (THUMB_W * THUMB_H) / 8; // 3000
+const FRAME_BYTES = 48000;
 
-const PALETTE_RGB = [];
-for(let i=0; i<16; i++){
-  const c = i * 17;
-  PALETTE_RGB.push([c,c,c]);
-}
+const BAYER = [
+    [ 0,  8,  2, 10],
+    [12,  4, 14,  6],
+    [ 3, 11,  1,  9],
+    [15,  7, 13,  5]
+];
 
 const MAX_NOTE = 200;
 
@@ -441,7 +434,6 @@ let currentFontGroupIdx = 0;
 let currentSize = 32;
 let direction = 0;
 
-// 颜色改为 0~15 数值
 let fgColor = 0;
 let bgColor = 15;
 let outlineColor = null;
@@ -473,7 +465,6 @@ const fontCache = {};
 const fontLoadingPromises = {};
 const bgThumbCache = {};
 
-/* ===== 缩略图串行队列 ===== */
 var thumbQueue = [];
 var thumbProcessing = false;
 var thumbObserver = null;
@@ -1189,7 +1180,7 @@ function blitChar(buf, w, h, glyph, x, y, style, fontH){
   onSet.forEach(key => {
     const px = Math.floor(key / 10000);
     const py = key % 10000;
-    buf[py * w + px] = fgSpec;
+   buf[py * w + px] = fgSpec;
   });
 }
 

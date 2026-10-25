@@ -1,5 +1,4 @@
 # web_server/server.py — HTTP 监听、路由分发、静态文件服务
-
 import socket
 import gc
 import os
@@ -104,14 +103,15 @@ def _handle_boot_bin_set(conn, headers, body_prefix):
     if storage not in ('sd', 'flash') or not isinstance(index, int) or index < 0:
         try:
             os.remove(BOOT_CFG_PATH)
-            _send(conn, b"200 OK", b"cleared")
         except OSError:
-            _send(conn, b"200 OK", b"cleared")
+            pass
+        _send(conn, b"200 OK", b"cleared")
         return
 
     try:
         with open(BOOT_CFG_PATH, 'w') as f:
-            json.dump({'storage': storage, 'index': index}, f)
+            import json as _j
+            _j.dump({'storage': storage, 'index': index}, f)
         _send(conn, b"200 OK", b"OK")
     except OSError as e:
         _send(conn, b"500 Internal Server Error", str(e).encode())
@@ -145,8 +145,6 @@ def _serve_static(conn, headers):
     try:
         os.stat(full)
         exists = True
-    except OSError:
-        exists = False
     except Exception:
         exists = False
 
@@ -171,11 +169,9 @@ def _serve_static(conn, headers):
 # ============================================================
 
 def start_server(bind_ip="0.0.0.0"):
-    # 确保 Flash 上的基础目录存在
     for d in ("/bins", "/bgs"):
         _ensure_dir(d)
 
-    # 安全检测：如果用户挂载了 SD 卡，才去创建 SD 内的目录
     try:
         os.stat("/sd")
         for d in ("/sd/bins", "/sd/bgs"):
@@ -184,7 +180,6 @@ def start_server(bind_ip="0.0.0.0"):
     except OSError:
         print("[WEB] storage: Flash only")
 
-    # 检查字体索引
     try:
         st = os.stat('/fonts_index.json')
         print('[WEB] /fonts_index.json: %d 字节' % st[6])
@@ -193,7 +188,6 @@ def start_server(bind_ip="0.0.0.0"):
         print('import build_font_index')
         print('build_font_index.build()')
 
-    # 等待网络栈完全就绪
     time.sleep(1.5)
 
     s = socket.socket()
@@ -201,7 +195,6 @@ def start_server(bind_ip="0.0.0.0"):
 
     print("[WEB] 绑定目标 IP:", bind_ip)
 
-    # ---------- 重试绑定 ----------
     bound = False
     for attempt in range(1, 6):
         try:
@@ -219,7 +212,6 @@ def start_server(bind_ip="0.0.0.0"):
         print("[WEB] FATAL: Could not bind to port 80 after 5 attempts")
         return
 
-    # 打印访问地址
     try:
         ap = network.WLAN(network.AP_IF)
         if ap.active():
@@ -233,13 +225,11 @@ def start_server(bind_ip="0.0.0.0"):
     except Exception:
         pass
 
-    # 主循环
     while True:
         conn, _ = s.accept()
         try:
             headers, body_prefix = _read_request(conn)
 
-            # 处理跨域预检请求
             if headers.startswith(b"OPTIONS "):
                 from .utils import CORS_HEADERS
                 conn.send(
@@ -249,8 +239,6 @@ def start_server(bind_ip="0.0.0.0"):
                     b"Connection: close\r\n\r\n"
                 )
                 continue
-
-            # ---------------- 路由分发 ----------------
 
             # 开机指定 BIN
             if headers.startswith(b"GET /boot/bin"):
@@ -374,8 +362,8 @@ def start_server(bind_ip="0.0.0.0"):
 
             # 系统接口
             elif headers.startswith(b"POST /upload"):
-                n = handle_upload(conn, body_prefix)
-                _send(conn, b"200 OK", n)
+                # handle_upload 自己发送响应（先响应后刷新），不再调用 _send
+                handle_upload(conn, headers, body_prefix)
             elif headers.startswith(b"POST /text/render"):
                 handle_text_render(conn, headers, body_prefix)
             elif b"GET /gray/" in headers:

@@ -1,5 +1,4 @@
 # text_renderer/render.py — 像素绘制、旋转、背景合成与流式输出
-
 import gc
 import os
 
@@ -17,10 +16,16 @@ from .fonts import _resolve_font
 
 W = 800
 H = 480
-FRAME_BYTES = W * H // 2
+FRAME_BYTES = W * H // 8  # 48000（1bpp）
 
+# 4×4 Bayer 矩阵（0~15）
+_BAYER4 = (
+    (0, 8, 2, 10),
+    (12, 4, 14, 6),
+    (3, 11, 1, 9),
+    (15, 7, 13, 5),
+)
 
-# ---------- 基础绘制工具 ----------
 
 def _bit_on(gdata, rb, x, y, gw, gh):
     if x < 0 or x >= gw or y < 0 or y >= gh:
@@ -30,7 +35,6 @@ def _bit_on(gdata, rb, x, y, gw, gh):
 
 def _blit_char_to_band(idx_buf, inner_w, band_start, band_end,
                        cx, cy, glyph, style, font_h):
-    """水平方向（0/180度）的字符绘制"""
     gw, gh, gdata = glyph
     if gw == 0 or gh == 0:
         return
@@ -43,7 +47,6 @@ def _blit_char_to_band(idx_buf, inner_w, band_start, band_end,
     rb = (gw + 7) // 8
     denom = max(1, gh - 1)
 
-    # 描边绘制
     if outline_spec is not None:
         row_start = max(0, band_start - cy - 1)
         row_end = min(gh, band_end - cy + 1)
@@ -88,7 +91,6 @@ def _blit_char_to_band(idx_buf, inner_w, band_start, band_end,
                 if is_neighbor:
                     idx_buf[row_off + px] = outline_spec
 
-    # 前景绘制
     for row_idx in range(gh):
         py = cy + row_idx
         if py < band_start or py >= band_end:
@@ -110,7 +112,6 @@ def _blit_char_to_band(idx_buf, inner_w, band_start, band_end,
 
 def _blit_char_to_band_transposed(idx_buf, inner_h, band_start, band_end_x,
                                   cx, cy, glyph, style, font_h):
-    """垂直方向（90/270度）的字符绘制"""
     gw, gh, gdata = glyph
     if gw == 0 or gh == 0:
         return
@@ -180,7 +181,6 @@ def _blit_char_to_band_transposed(idx_buf, inner_h, band_start, band_end_x,
 
 
 def _blit_char(buf, w, h, glyph, x, y, style, font_size):
-    """用于非流式全屏绘制的字符 blit"""
     gw, gh, gdata = glyph
     if gw == 0 or gh == 0:
         return
@@ -245,8 +245,6 @@ def _blit_char(buf, w, h, glyph, x, y, style, font_size):
                         buf[py * w + px2] = fg_spec
 
 
-# ---------- 旋转与打包 ----------
-
 def _rotate(buf, w, h, direction):
     if direction == 0:
         return (buf, w, h)
@@ -285,17 +283,24 @@ def _to_4bpp(idx_buf, w, h):
     return out
 
 
-def _pack_row(idx_row):
+def _pack_row(idx_row, y=0):
+    """把 0..15 灰度的索引行打包成 1bpp，使用 4×4 Bayer 抖动。
+
+    关键修复：原实现是 `if v > 7` 简单阈值，导致文字抗锯齿边缘直接
+    硬边化（马赛克感）。改用 Bayer 抖动后，16 级灰度的平滑边缘
+    会通过点阵密度"模拟"，视觉上更接近原图。
+    """
     n = len(idx_row)
-    out = bytearray(n // 2)
-    for i in range(0, n, 2):
-        hi = idx_row[i] & 0x0F
-        lo = idx_row[i + 1] & 0x0F
-        out[i // 2] = (hi << 4) | lo
+    out = bytearray(n // 8)
+    row_bayer = _BAYER4[y & 3]
+    for x in range(n):
+        v = idx_row[x]
+        # v(0..15) 映射到 0..255，Bayer 阈值映射到 0..248 中间值
+        thr = row_bayer[x & 3] * 16 + 8
+        if v * 17 > thr:
+            out[x >> 3] |= (0x80 >> (x & 7))
     return bytes(out)
 
-
-# ---------- 背景处理 ----------
 
 def _open_background(background):
     if not background:
@@ -313,13 +318,13 @@ def _read_bg_row(bg_handle, bg_spec, out_y):
     row = bytearray(W)
     if bg_handle is not None:
         try:
-            bg_handle.seek(out_y * 400)  # 800px / 2 = 400 bytes
-            b = bg_handle.read(400)
+            bg_handle.seek(out_y * 100)
+            b = bg_handle.read(100)
             n = len(b)
-            for i in range(400):
+            for i in range(100):
                 byte_v = b[i] if i < n else 0xFF
-                row[i * 2] = (byte_v >> 4) & 0xF
-                row[i * 2 + 1] = byte_v & 0xF
+                for bit in range(8):
+                    row[i * 8 + bit] = 15 if (byte_v & (0x80 >> bit)) else 0
             return row
         except Exception:
             pass
@@ -331,17 +336,17 @@ def _read_bg_row(bg_handle, bg_spec, out_y):
 def _fill_bg_band(out_idx, bg_handle, bg_spec, band_start, band_h):
     if bg_handle is not None:
         try:
-            bg_handle.seek(band_start * 400)
-            total = band_h * 400
+            bg_handle.seek(band_start * 100)
+            total = band_h * 100
             data = bg_handle.read(total)
             n = len(data)
             for y_local in range(band_h):
                 base = y_local * W
-                bb = y_local * 400
-                for i in range(400):
+                bb = y_local * 100
+                for i in range(100):
                     byte_v = data[bb + i] if (bb + i) < n else 0xFF
-                    out_idx[base + i * 2] = (byte_v >> 4) & 0xF
-                    out_idx[base + i * 2 + 1] = byte_v & 0xF
+                    for bit in range(8):
+                        out_idx[base + i * 8 + bit] = 15 if (byte_v & (0x80 >> bit)) else 0
             return True
         except Exception as e:
             print("[TEXT] bg read fail:", e)
@@ -376,7 +381,6 @@ def render_full(text, size=32, direction=0, per_char=None, default_style=None,
 
     text_layer = _make_bytearray_fill(inner_w * inner_h, SENTINEL)
 
-    # 使用 layout 模块计算行度量
     from .layout import _compute_line_metrics
     line_infos, lines_text = _compute_line_metrics(
         text, font, parsed_per_char, ds, inner_w, inner_h,
@@ -384,7 +388,6 @@ def render_full(text, size=32, direction=0, per_char=None, default_style=None,
         margin_top, margin_bottom, margin_left, margin_right,
         extra_fonts or {}, line_extras=line_extras)
 
-    # 遍历所有行并绘制到 text_layer
     for li, info in enumerate(line_infos):
         cy = info['cy']
         max_h = info['max_h']
@@ -544,10 +547,10 @@ def _draw_line_to_band_180(idx_buf, out_w, band_start, band_end,
                             for dx in (-1, 0, 1):
                                 if dx == 0 and dy == 0: continue
                                 if _bit_on(gdata, rb, rel_x + dx, nr, gw, gh):
-                                    is_nb = True;
+                                    is_nb = True
                                     break
                                 if bold_dx and _bit_on(gdata, rb, rel_x + dx - bold_dx, nr, gw, gh):
-                                    is_nb = True;
+                                    is_nb = True
                                     break
                             if is_nb: break
                         if is_nb:
@@ -651,10 +654,8 @@ def _stream_direct(epd, direction, line_infos, lines_text, font, per_char,
         band_h = band_end - band_start
         idx_buf = bytearray(band_h * W)
 
-        # 背景
         _fill_bg_band(idx_buf, bg_handle, bg_spec, band_start, band_h)
 
-        # 前景
         for li, info in enumerate(line_infos):
             cy = info['cy']
             if cy + info['lh'] <= band_start or cy >= band_end:
@@ -670,7 +671,8 @@ def _stream_direct(epd, direction, line_infos, lines_text, font, per_char,
         for y_local in range(band_h):
             base = y_local * W
             idx_row = idx_buf[base:base + W]
-            epd.write_chunk(_pack_row(idx_row))
+            global_y = band_start + y_local
+            epd.write_chunk(_pack_row(idx_row, global_y))
 
         del idx_buf
         gc.collect()
@@ -693,12 +695,10 @@ def _stream_rotated(epd, direction, inner_w, inner_h,
         band_cols = inner_col_end - inner_col_start
         text_idx = _make_bytearray_fill(band_cols * inner_h, SENTINEL)
 
-        # 绘制文字
         for li, info in enumerate(line_infos):
             _draw_line_to_text_idx(text_idx, inner_h, inner_col_start, inner_col_end,
                                    lines_text[li], info, per_char, ds, font, temp_fonts)
 
-        # 合成背景并输出
         for i in range(out_h):
             out_y = out_y_start + i
             if direction == 90:
@@ -724,7 +724,7 @@ def _stream_rotated(epd, direction, inner_w, inner_h,
                     tv = text_idx[text_base + out_x]
                     out_row[out_x] = bg_row[out_x] if tv == SENTINEL else tv
 
-            epd.write_chunk(_pack_row(out_row))
+            epd.write_chunk(_pack_row(out_row, out_y))
 
         del text_idx
         gc.collect()

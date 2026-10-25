@@ -103,7 +103,7 @@
 </head>
 <body data-nav-layout="fixed">
 <header>
-  <h1><span class="brand"></span>E6 图片转换工具 (16级灰度)</h1>
+  <h1><span class="brand"></span>E6 图片转换工具 (1bpp)</h1>
   <span class="host-info" id="hostInfo">检测中…</span>
 </header>
 
@@ -136,7 +136,7 @@
       <details class="palette-editor">
         <summary>查看灰度阶梯</summary>
         <div id="paletteRows"></div>
-        <div class="info">0 = 纯黑, 15 = 纯白。根据驱动波形自动适配。</div>
+        <div class="info">0 = 纯黑, 15 = 纯白。最终硬件以 1bpp 抖动显示。</div>
       </details>
     </fieldset>
 
@@ -315,11 +315,11 @@
         <div class="canvas-frame"><canvas id="canvasAdjusted"></canvas></div>
       </div>
       <div class="preview-card">
-        <div class="preview-head"><h2>抖动后</h2><span>校准灰度</span></div>
+        <div class="preview-head"><h2>抖动后（1bpp）</h2><span>真实屏效</span></div>
         <div class="canvas-frame"><canvas id="canvasDithered"></canvas></div>
       </div>
       <div class="preview-card">
-        <div class="preview-head"><h2>设备</h2><span>最终显示效果</span></div>
+        <div class="preview-head"><h2>设备</h2><span>1bpp 最终显示</span></div>
         <div class="canvas-frame"><canvas id="canvasDevice"></canvas></div>
       </div>
     </div>
@@ -329,7 +329,7 @@
 <div class="dialog-mask" id="sourceDialog">
   <div class="dialog">
     <h2>选择上传数据源</h2>
-    <p>由于是灰度图，Dithered 和 Device 的预览结果一致。通常都使用 Dithered（抖动后）。</p>
+    <p>由于是 1bpp 黑白显示，Dithered 和 Device 的预览结果一致。通常都使用 Dithered。</p>
     <div class="actions">
       <button type="button" data-src="dithered" class="primary">使用 Dithered</button>
       <button type="button" data-src="device">使用 Device</button>
@@ -355,13 +355,19 @@
 'use strict';
 
 const W = 800, H = 480;
-const FRAME_BYTES = W * H / 2; // 192000
+const FRAME_BYTES = 48000; // 1bpp：800 * 480 / 8
 const THUMB_W = 200, THUMB_H = 120;
-const THUMB_BYTES = (THUMB_W * THUMB_H) / 2; // 12000
+const THUMB_BYTES = (THUMB_W * THUMB_H) / 8; // 3000
 
 const PAGE_ON_DEVICE = (location.protocol === 'http:' || location.protocol === 'https:');
 
-// 生成 16 级灰度调色板
+const BAYER = [
+    [ 0,  8,  2, 10],
+    [12,  4, 14,  6],
+    [ 3, 11,  1,  9],
+    [15,  7, 13,  5]
+];
+
 const GRAY_PALETTE = [];
 for(let i=0; i<16; i++) {
   const c = (i * 17).toString(16).padStart(2, '0');
@@ -896,6 +902,10 @@ function applyRangeFitting(data, opts){
   }
 }
 
+// ★★★ 关键修复：dither() 直接输出 0/15 二值
+// 原来的实现输出 0..15 的 16 级灰度，然后 pack() 又做 Bayer 抖动 → 二次抖动 → 马赛克感
+// 修复后：所有抖动算法（error diffusion / ordered / random）直接输出 1bpp 结果
+// quantizationOnly 保留 16 级量化（供预览），pack() 用简单阈值
 function dither(data, palette, opts){
   const w = W, h = H, n = w*h;
   const buf = new Float32Array(n);
@@ -904,14 +914,13 @@ function dither(data, palette, opts){
   }
   const block = new Uint8Array(n);
 
-  function nearestGray(v) {
-    let idx = Math.round(v / 255 * 15);
-    return Math.max(0, Math.min(15, idx));
-  }
+  const BLACK = 0, WHITE = 15;
 
   if(opts.type === 'quantizationOnly'){
+    // 保留 16 级量化，供预览；pack() 用简单阈值
     for(let i = 0; i < n; i++){
-      block[i] = nearestGray(buf[i]);
+      let idx = Math.round(buf[i] / 255 * 15);
+      block[i] = Math.max(0, Math.min(15, idx));
     }
     return block;
   }
@@ -926,23 +935,22 @@ function dither(data, palette, opts){
     for(let y = 0; y < h; y++){
       for(let x = 0; x < w; x++){
         const i = y*w+x;
-        const t = (M[y%m][x%m]/div - 0.5) * 128;
-        block[i] = nearestGray(buf[i] + t);
+        const t = (M[y%m][x%m]/div - 0.5) * 255;
+        block[i] = (buf[i] + t > 127) ? WHITE : BLACK;
       }
     }
     return block;
   }
 
   if(opts.type === 'random'){
-    const bw = $('randomType').value === 'blackAndWhite';
     for(let i = 0; i < n; i++){
-      const r = buf[i] + (Math.random()-0.5)*128;
-      block[i] = nearestGray(r);
+      const r = buf[i] + (Math.random()-0.5)*255;
+      block[i] = (r > 127) ? WHITE : BLACK;
     }
     return block;
   }
 
-  // 误差扩散
+  // errorDiffusion（默认）：真正的 1bpp 误差扩散
   const kernel = KERNELS[opts.kernel] || KERNELS.floydSteinberg;
   for(let y = 0; y < h; y++){
     const reverse = opts.serpentine && (y % 2 === 1);
@@ -950,10 +958,10 @@ function dither(data, palette, opts){
       const x = reverse ? (w - 1 - xi) : xi;
       const i = y*w+x;
       const v = Math.max(0, Math.min(255, buf[i]));
-      const idx = nearestGray(v);
-      block[i] = idx;
-      const r_val = idx * 17;
-      const err = v - r_val;
+      const is_white = v > 127;
+      block[i] = is_white ? WHITE : BLACK;
+      const out_val = is_white ? 255 : 0;
+      const err = v - out_val;
       for(const [dx, dy, wt] of kernel){
         const nx = reverse ? x - dx : x + dx;
         const ny = y + dy;
@@ -976,20 +984,31 @@ function blockToImageData(block, rgbList){
   return img;
 }
 
+// ★★★ 关键修复：pack() 直接阈值，不做二次 Bayer 抖动
+// 因为 dither() 已经输出了 0/15（除 quantizationOnly），这里只需阈值
 function pack(block, palette){
   const buf = new Uint8Array(FRAME_BYTES);
   let k = 0;
   for(let y = 0; y < H; y++){
-    for(let x = 0; x < W; x += 2){
-      const hi = block[y*W+x] & 0x0F;
-      const lo = block[y*W+x+1] & 0x0F;
-      buf[k++] = (hi << 4) | lo;
+    for(let x = 0; x < W; x += 8){
+      let byte_val = 0;
+      for(let bit = 0; bit < 8; bit++){
+        const v = block[y * W + x + bit];
+        // quantizationOnly 输出 0..15，其他类型输出 0/15
+        // 统一阈值 8（等价于 0.5 灰度）
+        if(v >= 8){
+          byte_val |= (0x80 >> bit);
+        }
+      }
+      buf[k++] = byte_val;
     }
   }
   return buf;
 }
 
-function postProcessEdges(adjustedData, ditheredData, colors, opts){
+// ★★★ 关键修复：postProcessEdges 直接修改 block（lastBlock），
+// 这样预览和上传数据完全一致，不再"预览好、屏幕不一样"
+function postProcessEdges(adjustedData, block, opts){
   const useEdgePreserve = opts.edgePreserve && opts.edgePreserveStrength > 0;
   const useEdgeAntiAlias = opts.edgeAntiAlias && opts.edgeAntiAliasStrength > 0;
   if(!useEdgePreserve && !useEdgeAntiAlias) return;
@@ -1002,8 +1021,7 @@ function postProcessEdges(adjustedData, ditheredData, colors, opts){
 
   function nearestGray(r,g,b){
     const v = 0.299*r + 0.587*g + 0.114*b;
-    let idx = Math.round(v / 255 * 15);
-    return Math.max(0, Math.min(15, idx));
+    return v > 127 ? 15 : 0;
   }
 
   for(let y = 1; y < h-1; y++){
@@ -1012,20 +1030,13 @@ function postProcessEdges(adjustedData, ditheredData, colors, opts){
       const dy = Math.abs(srcLuma[(y+1)*w+x] - srcLuma[(y-1)*w+x]);
       const mag = Math.sqrt(dx*dx + dy*dy);
       const idx = (y*w+x)*4;
+      const pi = y*w+x;
 
       if(useEdgePreserve && mag > 42 && Math.random() < opts.edgePreserveStrength){
-        const ci = nearestGray(adjustedData[idx], adjustedData[idx+1], adjustedData[idx+2]);
-        const rgb = colors[ci].rgb;
-        ditheredData[idx] = rgb[0];
-        ditheredData[idx+1] = rgb[1];
-        ditheredData[idx+2] = rgb[2];
+        block[pi] = nearestGray(adjustedData[idx], adjustedData[idx+1], adjustedData[idx+2]);
       } else if(useEdgeAntiAlias && mag > 20 && mag <= 42 && Math.random() < opts.edgeAntiAliasStrength){
-        const ci = nearestGray(adjustedData[idx], adjustedData[idx+1], adjustedData[idx+2]);
-        const rgb = colors[ci].rgb;
         if(((x + y) & 1) === 0){
-          ditheredData[idx] = rgb[0];
-          ditheredData[idx+1] = rgb[1];
-          ditheredData[idx+2] = rgb[2];
+          block[pi] = nearestGray(adjustedData[idx], adjustedData[idx+1], adjustedData[idx+2]);
         }
       }
     }
@@ -1346,26 +1357,27 @@ function refresh(){
     drawRangeMap($('rangeMap'), opts);
     drawHistogram($('histogram'), adjustedCopy);
 
+    // 1bpp 抖动（直接输出 0/15）
     const block = dither(imgData.data, palette, {
       type: $('ditherType').value,
       kernel: $('kernel').value,
       serpentine: $('serpentine').checked,
       matching: 'rgb'
     });
+
+    // 边缘后处理直接修改 block（= lastBlock），预览和上传一致
+    if(opts.edgePreserve || opts.edgeAntiAlias){
+      postProcessEdges(adjustedRaw, block, opts);
+    }
+
     lastBlock = block;
 
-    const calColors = palette.colors.map(c => ({rgb: hexToRgb(c.color), lab: null}));
-    const devColors = palette.colors.map(c => ({rgb: hexToRgb(c.deviceColor), lab: null}));
+    // 预览：block 只有 0/15（quantizationOnly 除外），用调色板灰度渲染
     const calRgb = palette.colors.map(c => hexToRgb(c.color));
     const devRgb = palette.colors.map(c => hexToRgb(c.deviceColor));
 
     const ditheredImageData = blockToImageData(block, calRgb);
     const deviceImageData = blockToImageData(block, devRgb);
-
-    if(opts.edgePreserve || opts.edgeAntiAlias){
-      postProcessEdges(adjustedRaw, ditheredImageData.data, calColors, opts);
-      postProcessEdges(adjustedRaw, deviceImageData.data, devColors, opts);
-    }
 
     drawImageData($('canvasDithered'), ditheredImageData);
     drawImageData($('canvasDevice'), deviceImageData);
@@ -1373,7 +1385,7 @@ function refresh(){
     $('downloadBtn').disabled = false;
     $('uploadBtn').disabled = false;
     $('uploadToBinsBtn').disabled = false;
-    setStatus('就绪', '');
+    setStatus('就绪（1bpp 抖动：屏幕效果 = 抖动后预览）', '');
   } catch(e){
     console.error('[E6] refresh failed:', e);
     setStatus('处理失败：' + (e.message || e), 'err');
@@ -1454,17 +1466,20 @@ function askStorage(info){
 
 function generateThumb(bin){
   var tw = THUMB_W, th = THUMB_H;
-  var thumb = new Uint8Array(tw * th / 2);
+  var thumb = new Uint8Array(tw * th / 8); // 1bpp
   for (var ty = 0; ty < th; ty++){
     var sy = ty * 4;
-    var srcBase = sy * 400;
-    var dstBase = ty * 100;
+    var srcBase = sy * 100;
+    var dstBase = ty * 25;
     for (var tx = 0; tx < tw; tx++){
       var sx = tx * 4;
-      var b = bin[srcBase + (sx >> 1)];
-      var nib = (sx & 1) ? (b & 0xF) : ((b >> 4) & 0xF);
-      if (tx & 1) thumb[dstBase + (tx >> 1)] |= nib;
-      else        thumb[dstBase + (tx >> 1)]  = (nib << 4);
+      var b = bin[srcBase + (sx >> 3)];
+      var is_white = (b >> (7 - (sx & 7))) & 1;
+      if (is_white) {
+        thumb[dstBase + (tx >> 3)] |= (0x80 >> (tx & 7));
+      } else {
+        thumb[dstBase + (tx >> 3)] &= ~(0x80 >> (tx & 7));
+      }
     }
   }
   return thumb;

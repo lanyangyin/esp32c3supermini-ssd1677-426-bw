@@ -1,5 +1,4 @@
-# web_server/handlers_sys.py — 处理系统、上传、字体、WiFi 相关的 HTTP 接口
-
+# web_server/handlers_sys.py — 系统、上传、字体、WiFi 相关
 import gc
 import os
 import json
@@ -13,39 +12,127 @@ from .utils import (
     _send,
     _send_json,
     _send_file,
+    _send_response_only,
     _ensure_dir,
     _extract_query_param,
     _read_body,
+    _parse_content_length,
 )
+
+# 4×4 Bayer 有序抖动矩阵（0~15）
+_BAYER4 = (
+    (0, 8, 2, 10),
+    (12, 4, 14, 6),
+    (3, 11, 1, 9),
+    (15, 7, 13, 5),
+)
+
+_gray_row_tpl_cache = {}
+
+
+def _gray_row_templates(val):
+    """返回 4 个 bytes（各 100 字节），代表 4×4 Bayer 周期内的 4 行 1bpp 数据。"""
+    tpl = _gray_row_tpl_cache.get(val)
+    if tpl is not None:
+        return tpl
+
+    v255 = val * 17
+    rows = []
+    for y in range(4):
+        row = bytearray(100)  # 800 / 8
+        for bi in range(100):
+            bv = 0
+            base_x = bi * 8
+            for bit in range(8):
+                thr = _BAYER4[y][(base_x + bit) & 3] * 16 + 8
+                if v255 > thr:
+                    bv |= 0x80 >> bit
+            row[bi] = bv
+        rows.append(bytes(row))
+    _gray_row_tpl_cache[val] = rows
+    return rows
 
 
 # ============================================================
 # 上传并直接显示
 # ============================================================
 
-def handle_upload(conn, body_prefix):
-    """接收 192000 字节的 4bpp 数据，流式转 2bpp 直接上屏"""
-    epd.init()
-    epd.begin_frame()
-    received = 0
-    try:
-        if body_prefix:
-            n = min(len(body_prefix), FRAME_BYTES)
-            epd.write_chunk(body_prefix[:n])
-            received += n
-            gc.collect()
+def handle_upload(conn, headers, body_prefix):
+    """接收 1bpp 数据并显示到屏幕。
 
-        while received < FRAME_BYTES:
-            chunk = conn.recv(min(CHUNK, FRAME_BYTES - received))
-            if not chunk:
-                break
-            epd.write_chunk(chunk)
-            received += len(chunk)
-            gc.collect()
-    finally:
+    关键：先发送 HTTP 响应，再执行 end_frame()（阻塞 10~15 秒）。
+    如果先刷新屏幕再响应，浏览器会超时并 RST。
+    """
+    total_len = _parse_content_length(headers)
+    if total_len <= 0:
+        _send(conn, b"400 Bad Request", b"empty body")
+        return
+
+    need = min(total_len, FRAME_BYTES)
+
+    try:
+        conn.settimeout(30)
+    except Exception:
+        pass
+
+    err = None
+    epd_written = 0
+
+    try:
+        epd.init()
+        epd.begin_frame()
+        try:
+            if body_prefix:
+                n = min(len(body_prefix), need)
+                if n > 0:
+                    epd.write_chunk(body_prefix[:n])
+                    epd_written = n
+                    gc.collect()
+
+            while epd_written < need:
+                want = min(CHUNK, need - epd_written)
+                chunk = conn.recv(want)
+                if not chunk:
+                    break
+                epd.write_chunk(chunk)
+                epd_written += len(chunk)
+                gc.collect()
+        except Exception as e:
+            err = str(e)
+            print("[UPLOAD] epd write error:", e)
+    except Exception as e:
+        err = str(e)
+        print("[UPLOAD] epd init error:", e)
+
+    # 排空剩余数据（如果 total_len > need，多出的字节必须读掉，否则浏览器会 RST）
+    prefix_len = len(body_prefix) if body_prefix else 0
+    remaining = total_len - prefix_len
+    already_from_conn = epd_written - min(prefix_len, need)
+    drain_need = remaining - already_from_conn
+    if drain_need > 0:
+        try:
+            while drain_need > 0:
+                chunk = conn.recv(min(CHUNK, drain_need))
+                if not chunk:
+                    break
+                drain_need -= len(chunk)
+                gc.collect()
+        except Exception:
+            pass
+
+    if err:
+        _send_response_only(conn, b"500 Internal Server Error", err.encode())
+    else:
+        _send_response_only(conn, b"200 OK", str(epd_written).encode())
+
+    try:
         epd.end_frame()
+    except Exception as e:
+        print("[UPLOAD] end_frame error:", e)
+    try:
         epd.sleep()
-    return received
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -53,16 +140,46 @@ def handle_upload(conn, body_prefix):
 # ============================================================
 
 def handle_gray_test(conn, headers):
-    val_str = headers.split(b"/gray/")[1].split()[0].decode()
+    """把全屏刷成灰度 val（0~15），用 Bayer 抖动模拟 16 级灰度。"""
     try:
+        val_str = headers.split(b"/gray/")[1].split()[0].decode()
         val = int(val_str)
-        if 0 <= val <= 15:
-            epd.clear(val)
-            _send(conn, b"200 OK", b"OK")
-        else:
-            _send(conn, b"400 Bad Request", b"out of range")
-    except ValueError:
+    except (ValueError, IndexError):
         _send(conn, b"404 Not Found", b"no gray")
+        return
+
+    if not (0 <= val <= 15):
+        _send(conn, b"400 Bad Request", b"out of range")
+        return
+
+    err = None
+    try:
+        rows = _gray_row_templates(val)
+        epd.init()
+        epd.begin_frame()
+        try:
+            for y in range(480):
+                epd.write_chunk(rows[y & 3])
+        except Exception as e:
+            err = str(e)
+            print("[GRAY] write error:", e)
+    except Exception as e:
+        err = str(e)
+        print("[GRAY] init error:", e)
+
+    if err:
+        _send_response_only(conn, b"500 Internal Server Error", err.encode())
+    else:
+        _send_response_only(conn, b"200 OK", b"OK")
+
+    try:
+        epd.end_frame()
+    except Exception as e:
+        print("[GRAY] end_frame error:", e)
+    try:
+        epd.sleep()
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -106,7 +223,6 @@ def handle_fonts_list(conn):
     except OSError:
         pass
 
-    # 如果没有 index，现场扫描
     out = []
 
     def scan(fs_root, storage):

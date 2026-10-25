@@ -1,8 +1,6 @@
-# ssd1677.py — 最终安全版（完全避开父类初始化冲突）
+# ssd1677.py — 极简版（直接透传 1bpp 黑白数据）
 import time
-import framebuf
 from micropython import const
-import gc
 
 _SW_RESET = const(0x12)
 _DRIVER_OUTPUT_CONTROL = const(0x01)
@@ -19,7 +17,6 @@ _DEEP_SLEEP = const(0x10)
 _UPDATE_MODE_FULL = const(0xF7)
 
 
-# 注意：不再继承 framebuf.FrameBuffer，彻底断绝参数冲突！
 class SSD1677:
     def __init__(self, width, height, spi, dc, cs, rst, busy):
         self.width = width
@@ -33,29 +30,10 @@ class SSD1677:
         self.dc.init(self.dc.OUT, value=0)
         self.cs.init(self.cs.OUT, value=1)
         self.rst.init(self.rst.OUT, value=1)
-        self.busy.init(self.busy.IN)
+        self.busy.init(self.busy.IN, pull=self.busy.PULL_UP)
 
-        self._dirty = None
         self._in_stream = False
-        self._stream_y = 0
-        self.buffer = None
-
         self.init_display()
-
-    def alloc_framebuffer(self):
-        """按需分配整屏缓存（用于 BIN 编辑等重绘图操作）"""
-        if self.buffer is not None:
-            return True
-        try:
-            gc.collect()
-            self.buffer = bytearray((self.width // 2) * self.height)
-            # 这里只是给外部提供一个缓冲，不绑定到 FrameBuffer 父类
-            print("[SSD1677] framebuffer allocated (192000 bytes)")
-            return True
-        except MemoryError:
-            print("[SSD1677] MemoryError: Cannot allocate framebuffer")
-            self.buffer = None
-            return False
 
     def _cmd(self, command, *data):
         self.cs(0)
@@ -90,7 +68,7 @@ class SSD1677:
         self._cmd(_SET_RAM_X_COUNTER, x & 0xFF, (x >> 8) & 0x03)
         self._cmd(_SET_RAM_Y_COUNTER, y & 0xFF, (y >> 8) & 0xFF)
 
-    def init_display(self, fast_prime=False):
+    def init_display(self):
         self._reset()
         self._busy_wait()
         self._cmd(_SW_RESET)
@@ -101,13 +79,13 @@ class SSD1677:
         self._cmd(_DRIVER_OUTPUT_CONTROL, (h - 1) & 0xFF, ((h - 1) >> 8) & 0xFF, 0x02)
         self._cmd(_BORDER_WAVEFORM_CONTROL, 0x01)
         self._cmd(_DATA_ENTRY_MODE, 0x01)
+
         self._set_window(0, h - 1, self.width - 1, 0)
         self._set_cursor(0, 0)
         self._busy_wait()
 
     def begin_frame(self):
         self._in_stream = True
-        self._stream_y = 0
         self._set_window(0, self.height - 1, self.width - 1, 0)
         self._set_cursor(0, 0)
         self.cs(0)
@@ -116,53 +94,26 @@ class SSD1677:
         self.dc(1)
 
     def write_chunk(self, chunk):
-        """接收 4bpp（16 级灰度）数据，转成 SSD1677 需要的 2bpp（4 级灰度）后 SPI 发送。"""
         if not self._in_stream:
             raise OSError("Must call begin_frame() first")
-
-        n = len(chunk)
-        if n == 0:
-            return
-
-        # 4bpp -> 2bpp：每 2 字节输入（4 像素）→ 1 字节输出（4 像素，每 2 bit）
-        if n % 2 != 0:
-            chunk = bytes(chunk) + b'\x00'
-            n += 1
-
-        out = bytearray(n // 2)
-        for i in range(0, n, 2):
-            b0 = chunk[i]
-            b1 = chunk[i + 1]
-            q0 = ((b0 >> 4) & 0x0F) // 5  # 16级 → 4级 (0-3)
-            q1 = (b0 & 0x0F) // 5
-            q2 = ((b1 >> 4) & 0x0F) // 5
-            q3 = (b1 & 0x0F) // 5
-            out[i // 2] = (q0 << 6) | (q1 << 4) | (q2 << 2) | q3
-
-        self.spi.write(out)
+        self.spi.write(chunk)
 
     def end_frame(self):
+        if not self._in_stream:
+            return
         self._in_stream = False
         self.cs(1)
         self._cmd(_DISPLAY_UPDATE_CONTROL_2, _UPDATE_MODE_FULL)
         self._cmd(_MASTER_ACTIVATION)
         self._busy_wait()
 
-    def show(self):
-        if self.buffer is None:
-            raise OSError("Framebuffer not allocated. Use begin_frame() / write_chunk() instead.")
-        self.begin_frame()
-        chunk_size = 4000
-        for i in range(0, len(self.buffer), chunk_size):
-            self.write_chunk(self.buffer[i:i + chunk_size])
-        self.end_frame()
-
     def sleep(self):
         self._cmd(_DEEP_SLEEP, 0x01)
         time.sleep_ms(2000)
 
-    def clear(self, color=15):
-        row = bytearray([(color << 4) | color] * 400)
+    def clear(self, color=1):
+        fill_val = 0xFF if color == 1 else 0x00
+        row = bytearray([fill_val] * (self.width // 8))
         self.begin_frame()
         for _ in range(self.height):
             self.write_chunk(row)
