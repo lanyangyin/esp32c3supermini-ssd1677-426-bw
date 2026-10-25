@@ -5,14 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>网络设置 - E6 Panel</title>
 <style>
-body{font-family:-apple-system,system-ui,sans-serif;max-width:520px;margin:20px auto;padding:0 12px;color:#222}
+body{font-family:-apple-system,system-ui,sans-serif;max-width:560px;margin:20px auto;padding:0 12px;color:#222}
 h2{margin-bottom:8px}
 h3{margin-top:22px;border-bottom:1px solid #ddd;padding-bottom:4px;font-size:15px}
-button.btn{display:inline-block;margin:3px;padding:8px 14px;border-radius:4px;
+button.btn{display:inline-block;margin:2px;padding:8px 14px;border-radius:4px;
   text-decoration:none;color:#fff;font-size:14px;border:none;cursor:pointer;background:#555}
 button.btn:disabled{opacity:.45;cursor:not-allowed}
+button.btn.green{background:#0a7a0a}
+button.btn.red{background:#c03030}
+button.btn.small{padding:6px 10px;font-size:13px}
 #status{margin:10px 0;padding:8px 10px;background:#f4f4f4;border-radius:4px;
-  font-size:14px;color:#333;min-height:20px}
+  font-size:14px;color:#333;min-height:20px;word-break:break-all}
 
 .net-status{
   background:#f7fbff;border:1px solid #cfe3f6;
@@ -32,10 +35,12 @@ button.btn:disabled{opacity:.45;cursor:not-allowed}
 .net-status .val.err{color:#c00}
 .net-status .val.mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace}
 
-.net-item{padding:8px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
+.net-item{padding:10px 4px;border-bottom:1px solid #eee;
+  display:flex;justify-content:space-between;align-items:center;gap:8px}
 .net-item:last-child{border-bottom:none}
+.net-info{flex:1;min-width:0;word-break:break-all}
 .rssi{color:#888;font-size:12px}
-input{width:100%;padding:6px;margin:4px 0;border:1px solid #ccc;border-radius:4px;box-sizing:border-box}
+input{width:100%;padding:8px;margin:4px 0;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font-size:14px}
 </style>
 </head>
 <body data-nav-layout="scroll">
@@ -71,6 +76,12 @@ input{width:100%;padding:6px;margin:4px 0;border:1px solid #ccc;border-radius:4p
 <script>
 const statusEl = document.getElementById('status');
 function setStatus(msg){ statusEl.textContent = msg; }
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[c]);
+}
 
 async function refreshStatus(){
   const apEl = document.getElementById('apInfo');
@@ -109,12 +120,6 @@ async function refreshStatus(){
   }
 }
 
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  })[c]);
-}
-
 async function loadSaved(){
   try{
     const r = await fetch('/wifi/list');
@@ -128,17 +133,60 @@ async function loadSaved(){
     nets.forEach((n) => {
       const div = document.createElement('div');
       div.className = 'net-item';
-      div.innerHTML = '<span><b>' + escapeHtml(n.ssid) +
-        '</b> <span class="rssi">(优先级 ' + n.priority + ')</span></span>';
-      const btn = document.createElement('button');
-      btn.className = 'btn';
-      btn.textContent = '删除';
-      btn.onclick = () => deleteNetwork(n.ssid);
-      div.appendChild(btn);
+
+      const info = document.createElement('div');
+      info.className = 'net-info';
+      info.innerHTML = '<b>' + escapeHtml(n.ssid) +
+        '</b> <span class="rssi">(优先级 ' + n.priority + ')</span>';
+
+      const actions = document.createElement('div');
+      actions.style.display = 'flex';
+      actions.style.gap = '6px';
+
+      const btnConn = document.createElement('button');
+      btnConn.className = 'btn green small';
+      btnConn.textContent = '连接';
+      btnConn.onclick = () => connectNetwork(n.ssid, btnConn);
+      actions.appendChild(btnConn);
+
+      const btnDel = document.createElement('button');
+      btnDel.className = 'btn red small';
+      btnDel.textContent = '删除';
+      btnDel.onclick = () => deleteNetwork(n.ssid);
+      actions.appendChild(btnDel);
+
+      div.appendChild(info);
+      div.appendChild(actions);
       list.appendChild(div);
     });
   }catch(e){
     setStatus('读取已保存网络失败');
+  }
+}
+
+async function connectNetwork(ssid, btn){
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '连接中…';
+  setStatus('正在连接 ' + ssid + '，请等待 15~30 秒…');
+  try{
+    const r = await fetch('/wifi/connect', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ssid})
+    });
+    const data = await r.json();
+    if(data.connected){
+      setStatus('✓ 已连接到 ' + ssid + '（IP ' + (data.ip || '?') + '）');
+      refreshStatus();
+    }else{
+      setStatus('✗ 连接 ' + ssid + ' 失败：' + (data.error || '超时'));
+    }
+  }catch(e){
+    setStatus('连接请求失败：' + e.message);
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
   }
 }
 
@@ -152,15 +200,22 @@ async function scan(){
     nets.forEach(n => {
       const div = document.createElement('div');
       div.className = 'net-item';
-      div.innerHTML = '<span>' + escapeHtml(n.ssid) +
-        ' <span class="rssi">' + n.rssi + ' dBm</span></span>';
+
+      const info = document.createElement('div');
+      info.className = 'net-info';
+      info.innerHTML = escapeHtml(n.ssid) +
+        ' <span class="rssi">' + n.rssi + ' dBm</span>';
+
       const btn = document.createElement('button');
-      btn.className = 'btn';
+      btn.className = 'btn small';
       btn.textContent = '使用';
       btn.onclick = () => {
         document.getElementById('ssidInput').value = n.ssid;
         setStatus('已选择 ' + n.ssid + '，请输入密码后保存');
+        window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});
       };
+
+      div.appendChild(info);
       div.appendChild(btn);
       list.appendChild(div);
     });
@@ -182,8 +237,12 @@ async function saveNetwork(){
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ssid, password: pwd, priority})
     });
-    if(r.ok){ setStatus('保存成功，重启后生效'); loadSaved(); }
-    else setStatus('保存失败');
+    if(r.ok){
+      setStatus('保存成功，重启后自动连接');
+      loadSaved();
+    } else {
+      setStatus('保存失败');
+    }
   }catch(e){ setStatus('保存失败：' + e); }
 }
 

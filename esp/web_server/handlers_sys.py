@@ -31,7 +31,6 @@ _gray_row_tpl_cache = {}
 
 
 def _gray_row_templates(val):
-    """返回 4 个 bytes（各 100 字节），代表 4×4 Bayer 周期内的 4 行 1bpp 数据。"""
     tpl = _gray_row_tpl_cache.get(val)
     if tpl is not None:
         return tpl
@@ -39,7 +38,7 @@ def _gray_row_templates(val):
     v255 = val * 17
     rows = []
     for y in range(4):
-        row = bytearray(100)  # 800 / 8
+        row = bytearray(100)
         for bi in range(100):
             bv = 0
             base_x = bi * 8
@@ -58,11 +57,6 @@ def _gray_row_templates(val):
 # ============================================================
 
 def handle_upload(conn, headers, body_prefix):
-    """接收 1bpp 数据并显示到屏幕。
-
-    关键：先发送 HTTP 响应，再执行 end_frame()（阻塞 10~15 秒）。
-    如果先刷新屏幕再响应，浏览器会超时并 RST。
-    """
     total_len = _parse_content_length(headers)
     if total_len <= 0:
         _send(conn, b"400 Bad Request", b"empty body")
@@ -104,7 +98,6 @@ def handle_upload(conn, headers, body_prefix):
         err = str(e)
         print("[UPLOAD] epd init error:", e)
 
-    # 排空剩余数据（如果 total_len > need，多出的字节必须读掉，否则浏览器会 RST）
     prefix_len = len(body_prefix) if body_prefix else 0
     remaining = total_len - prefix_len
     already_from_conn = epd_written - min(prefix_len, need)
@@ -140,7 +133,6 @@ def handle_upload(conn, headers, body_prefix):
 # ============================================================
 
 def handle_gray_test(conn, headers):
-    """把全屏刷成灰度 val（0~15），用 Bayer 抖动模拟 16 级灰度。"""
     try:
         val_str = headers.split(b"/gray/")[1].split()[0].decode()
         val = int(val_str)
@@ -400,3 +392,61 @@ def handle_wifi_delete(conn, headers, body_prefix):
         _send(conn, b"200 OK", b"OK")
     except Exception as e:
         _send(conn, b"500 Internal Server Error", str(e))
+
+
+def handle_wifi_connect(conn, headers, body_prefix):
+    """立即连接已保存的 WiFi。
+
+    POST JSON: {"ssid": "..."}
+    返回 JSON: {"ok": true, "connected": true, "ip": "..."}
+              {"ok": false, "connected": false, "error": "..."}
+
+    注意：此函数会阻塞 20~40 秒（单线程 HTTP 服务器），期间其他请求排队。
+    """
+    try:
+        body = _read_body(conn, headers, body_prefix)
+        data = json.loads(body) if body else {}
+        ssid = (data.get("ssid") or "").strip()
+        if not ssid:
+            _send_json(conn, {"ok": False, "connected": False, "error": "ssid empty"},
+                       b"400 Bad Request")
+            return
+
+        import wifi_manager
+        cfg = wifi_manager.load_config()
+        pwd = None
+        for n in cfg.get("known_networks", []):
+            if n["ssid"] == ssid:
+                pwd = n.get("password", "")
+                break
+        if pwd is None:
+            _send_json(conn, {"ok": False, "connected": False, "error": "not found"},
+                       b"404 Not Found")
+            return
+
+        print("[WEB] 正在连接:", ssid)
+        try:
+            conn.settimeout(120)
+        except Exception:
+            pass
+
+        ok = wifi_manager.connect_sta(ssid, pwd, timeout=20, retries=2)
+
+        if ok:
+            ip = "0.0.0.0"
+            try:
+                ip = network.WLAN(network.STA_IF).ifconfig()[0]
+            except Exception:
+                pass
+            print("[WEB] 连接成功:", ssid, ip)
+            _send_json(conn, {"ok": True, "connected": True, "ip": ip})
+        else:
+            print("[WEB] 连接失败:", ssid)
+            _send_json(conn, {"ok": False, "connected": False, "error": "timeout"})
+    except Exception as e:
+        print("[WEB] wifi_connect error:", e)
+        try:
+            _send_json(conn, {"ok": False, "connected": False, "error": str(e)},
+                       b"500 Internal Server Error")
+        except Exception:
+            pass

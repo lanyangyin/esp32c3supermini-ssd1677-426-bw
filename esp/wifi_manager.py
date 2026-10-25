@@ -12,8 +12,9 @@ def load_config():
     try:
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
-    except:
-        return {"known_networks": [], "ap": {"essid": AP_SSID, "password": AP_PASSWORD}}
+    except Exception:
+        return {"known_networks": [],
+                "ap": {"essid": AP_SSID, "password": AP_PASSWORD}}
 
 
 def save_config(cfg):
@@ -29,15 +30,18 @@ def start_ap(cfg=None):
 
     if not ap.active():
         ap.active(True)
-        # ⚠️ 关键：ESP-IDF 网络子系统初始化需要时间，等待 3 秒
-        time.sleep(3.0)
+        time.sleep(1.5)  # PHY 预热
 
     ap.config(essid=ap_cfg.get("essid", AP_SSID),
               password=ap_cfg.get("password", AP_PASSWORD),
               authmode=network.AUTH_WPA_WPA2_PSK)
-    time.sleep(1.0)
 
-    # ⚠️ 注意：不要调用 ap.config(txpower=10)，它可能会干扰 lwIP 路由状态
+    # 轮询等 IP
+    for _ in range(20):
+        ip = ap.ifconfig()[0]
+        if ip and ip != '0.0.0.0':
+            break
+        time.sleep(0.5)
 
     print(f"[AP] http://{ap.ifconfig()[0]}")
     return ap
@@ -47,6 +51,7 @@ def scan_networks():
     sta = network.WLAN(network.STA_IF)
     if not sta.active():
         sta.active(True)
+        time.sleep(1.0)  # PHY 预热
     nets = sta.scan()
     result = []
     for net in nets:
@@ -59,14 +64,20 @@ def scan_networks():
     return result
 
 
-def connect_sta(ssid, password, timeout=25, retries=3):
-    """
-    ⚠️ 当前固件下，STA 连接失败后启动 AP 可能触发 lwIP 崩溃，main.py 默认不调用。
+def connect_sta(ssid, password, timeout=20, retries=2):
+    """连接 STA。超时含 PHY 预热 + 认证 + DHCP。
+
+    关键改进：
+      - 首次 sta.active(True) 后 sleep(1.5) 预热 PHY（原 0.5s 冷启动不够）
+      - IP 等待 8 秒（原 5s 太短）
+      - 默认 retries=2（原 3，多试浪费启动时间）
     """
     sta = network.WLAN(network.STA_IF)
     if not sta.active():
         sta.active(True)
-        time.sleep(0.5)
+        time.sleep(1.5)  # 预热
+    else:
+        time.sleep(0.3)
 
     try:
         if sta.isconnected():
@@ -89,14 +100,15 @@ def connect_sta(ssid, password, timeout=25, retries=3):
             if time.time() - start > timeout:
                 print(f"[STA] {ssid} 连接超时（{timeout}s）")
                 break
-            time.sleep(0.2)
+            time.sleep(0.3)
 
         if sta.isconnected():
+            # 等 IP 分配
             start = time.time()
             while sta.ifconfig()[0] == '0.0.0.0':
-                if time.time() - start > 5:
+                if time.time() - start > 8:
                     break
-                time.sleep(0.2)
+                time.sleep(0.3)
             print(f"[STA] 已连接 {ssid}, http://{sta.ifconfig()[0]}")
             return True
 

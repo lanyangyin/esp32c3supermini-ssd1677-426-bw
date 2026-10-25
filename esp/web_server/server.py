@@ -33,7 +33,7 @@ from .handlers_bgs import (
 from .handlers_sys import (
     handle_upload, handle_gray_test, handle_fonts_list, handle_fonts_get,
     handle_system_status, handle_wifi_scan, handle_wifi_list,
-    handle_wifi_save, handle_wifi_delete,
+    handle_wifi_save, handle_wifi_delete, handle_wifi_connect,
 )
 from .handlers_text import handle_text_render
 
@@ -188,7 +188,7 @@ def start_server(bind_ip="0.0.0.0"):
         print('import build_font_index')
         print('build_font_index.build()')
 
-    time.sleep(1.5)
+    time.sleep(1.0)
 
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -362,7 +362,6 @@ def start_server(bind_ip="0.0.0.0"):
 
             # 系统接口
             elif headers.startswith(b"POST /upload"):
-                # handle_upload 自己发送响应（先响应后刷新），不再调用 _send
                 handle_upload(conn, headers, body_prefix)
             elif headers.startswith(b"POST /text/render"):
                 handle_text_render(conn, headers, body_prefix)
@@ -378,6 +377,8 @@ def start_server(bind_ip="0.0.0.0"):
                 handle_wifi_save(conn, headers, body_prefix)
             elif headers.startswith(b"POST /wifi/delete"):
                 handle_wifi_delete(conn, headers, body_prefix)
+            elif headers.startswith(b"POST /wifi/connect"):
+                handle_wifi_connect(conn, headers, body_prefix)
 
             # 静态文件兜底
             elif headers.startswith(b"GET "):
