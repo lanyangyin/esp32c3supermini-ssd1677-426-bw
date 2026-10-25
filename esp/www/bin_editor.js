@@ -597,6 +597,143 @@ function updateLockUI() {
   }
 }
 
+// 算法：按 16x16 网格扫描，找出非透明块，贪心合并成大矩形
+function getMultiRects() {
+  const CELL = 16;
+  const cols = Math.ceil(W / CELL);
+  const rows = Math.ceil(H / CELL);
+  const grid = new Uint8Array(cols * rows);
+
+  // 1. 标记脏块
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let i = y * W + x;
+      if (drawLayer[i] !== TRANSPARENT || binLayer[i] !== TRANSPARENT) {
+        const cx = Math.floor(x / CELL);
+        const cy = Math.floor(y / CELL);
+        grid[cy * cols + cx] = 1;
+      }
+    }
+  }
+
+  // 2. 贪心合并
+  const rects = [];
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < cols; cx++) {
+      if (grid[cy * cols + cx] !== 1) continue;
+
+      // 向右扩展
+      let w_cells = 1;
+      while (cx + w_cells < cols && grid[cy * cols + cx + w_cells] === 1) {
+        w_cells++;
+      }
+
+      // 向下扩展
+      let h_cells = 1;
+      let canExpandDown = true;
+      while (cy + h_cells < rows && canExpandDown) {
+        for (let i = 0; i < w_cells; i++) {
+          if (grid[(cy + h_cells) * cols + cx + i] !== 1) {
+            canExpandDown = false;
+            break;
+          }
+        }
+        if (canExpandDown) h_cells++;
+      }
+
+      // 标记已合并的块为已处理
+      for (let dy = 0; dy < h_cells; dy++) {
+        for (let dx = 0; dx < w_cells; dx++) {
+          grid[(cy + dy) * cols + cx + dx] = 0;
+        }
+      }
+
+      // 计算实际像素坐标
+      const x0 = cx * CELL;
+      const y0 = cy * CELL;
+      const x1 = Math.min(W - 1, (cx + w_cells) * CELL - 1);
+      const y1 = Math.min(H - 1, (cy + h_cells) * CELL - 1);
+
+      rects.push({ x0, y0, x1, y1 });
+    }
+  }
+  return rects;
+}
+
+// 提取每个矩形的 1bpp 数据，并拼接成二进制包
+function packMultiRects(rects) {
+  const num_rects = rects.length;
+  if (num_rects === 0) return null;
+
+  const rectDatas = [];
+  let totalDataLen = 0;
+
+  for (const r of rects) {
+    // 强制 X 对齐
+    const x0 = r.x0 & ~7;
+    const x1 = (r.x1 | 7) >= W ? W - 1 : (r.x1 | 7);
+    const w = x1 - x0 + 1;
+    const h = r.y1 - r.y0 + 1;
+    const rowBytes = w >> 3;
+    const len = rowBytes * h;
+
+    const data = new Uint8Array(len);
+    let k = 0;
+    for (let y = r.y0; y <= r.y1; y++) {
+      for (let x = x0; x <= x1; x += 8) {
+        let byte_val = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          let px = x + bit;
+          if (px > x1) break;
+
+          let v = resolveIndex(px, y);
+          if (v === TRANSPARENT) v = 15; // 透明转白
+
+          if (v * 17 > BAYER[y % 4][px % 4] * 16 + 8) {
+            byte_val |= (0x80 >> bit);
+          }
+        }
+        data[k++] = byte_val;
+      }
+    }
+    rectDatas.push(data);
+    totalDataLen += len;
+  }
+
+  // 组包: [N(2)] [dataLen(2)] [x0,y0,x1,y1 (各2B)]... [Data]
+  const headerLen = 4 + num_rects * 8;
+  const buf = new Uint8Array(headerLen + totalDataLen);
+  let idx = 0;
+
+  buf[idx++] = (num_rects >> 8) & 0xFF;
+  buf[idx++] = num_rects & 0xFF;
+  buf[idx++] = (totalDataLen >> 8) & 0xFF;
+  buf[idx++] = totalDataLen & 0xFF;
+
+  for (let i = 0; i < num_rects; i++) {
+    const r = rects[i];
+    // X 坐标必须按 8 对齐传给后端
+    const x0 = r.x0 & ~7;
+    const x1 = (r.x1 | 7) >= W ? W - 1 : (r.x1 | 7);
+
+    buf[idx++] = (x0 >> 8) & 0xFF;
+    buf[idx++] = x0 & 0xFF;
+    buf[idx++] = (r.y0 >> 8) & 0xFF;
+    buf[idx++] = r.y0 & 0xFF;
+    buf[idx++] = (x1 >> 8) & 0xFF;
+    buf[idx++] = x1 & 0xFF;
+    buf[idx++] = (r.y1 >> 8) & 0xFF;
+    buf[idx++] = r.y1 & 0xFF;
+  }
+
+  for (let i = 0; i < num_rects; i++) {
+    buf.set(rectDatas[i], idx);
+    idx += rectDatas[i].length;
+  }
+
+  return buf;
+}
+
 async function displayToScreen() {
   const btn = $('displayBtn');
   const originalText = btn.textContent;
@@ -604,9 +741,37 @@ async function displayToScreen() {
   btn.textContent = '上传中…';
 
   try {
-    const buf = packLayers();
     const mode = ($('refreshMode') && $('refreshMode').value) || 'full';
-    await window.E6Display.uploadToScreen(buf, mode, setStatus);
+    let bin = null;
+    let bounds = null;
+
+    if (mode === 'partial') {
+      bounds = getBoundingBox();
+      if (!bounds) {
+        setStatus('画布全透明，无内容可刷新', 'err');
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
+      const res = packPartial(bounds);
+      bin = res.buf;
+      bounds = { x0: res.x0, y0: res.y0, x1: res.x1, y1: res.y1 };
+      setStatus(`单矩形: ${bounds.x1-bounds.x0+1}x${bounds.y1-bounds.y0+1}`, 'busy');
+    } else if (mode === 'partial_multi') {
+      const rects = getMultiRects();
+      if (rects.length === 0) {
+        setStatus('画布全透明，无内容可刷新', 'err');
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
+      bin = packMultiRects(rects);
+      setStatus(`多矩形: ${rects.length} 块，约 ${bin.length} 字节`, 'busy');
+    } else {
+      bin = packLayers();
+    }
+
+    await window.E6Display.uploadToScreen(bin, mode, setStatus, bounds);
   } catch (e) {
     setStatus('显示失败：' + e.message, 'err');
   } finally {

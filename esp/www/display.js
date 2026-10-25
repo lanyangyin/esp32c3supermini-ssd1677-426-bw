@@ -1,17 +1,13 @@
-// www/display.js — E6 公用屏幕刷新工具
+// www/display.js
 (function(){
 'use strict';
 
 window.E6Display = {
-    // 清除残影：全屏刷白
     clearGhosting: async function(mode, statusCallback) {
         if (statusCallback) statusCallback('正在清除残影（全刷）...', 'busy');
         try {
             const r = await fetch('/clear?mode=' + (mode || 'full'), { cache: 'no-store' });
-            if (!r.ok) {
-                const t = await r.text();
-                throw new Error('HTTP ' + r.status + ': ' + t);
-            }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
             if (statusCallback) statusCallback('残影清除完成 ✓', 'ok');
             return true;
         } catch (e) {
@@ -20,11 +16,14 @@ window.E6Display = {
         }
     },
 
-    // 上传图像并显示
-    uploadToScreen: async function(binData, mode, statusCallback) {
-        if (statusCallback) statusCallback('上传到屏幕（' + (mode || 'full') + '）…', 'busy');
+    uploadToScreen: async function(binData, mode, statusCallback, bounds) {
+        if (statusCallback) statusCallback('上传到屏幕（' + mode + '）…', 'busy');
         try {
-            const r = await fetch('/upload?mode=' + encodeURIComponent(mode || 'full'), {
+            let url = '/upload?mode=' + encodeURIComponent(mode);
+            if (bounds && mode === 'partial') {
+                url += `&x0=${bounds.x0}&y0=${bounds.y0}&x1=${bounds.x1}&y1=${bounds.y1}`;
+            }
+            const r = await fetch(url, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/octet-stream'},
                 body: binData
