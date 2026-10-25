@@ -30,7 +30,7 @@ window.E6Display = {
             });
             const t = await r.text();
             if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + t);
-            if (statusCallback) statusCallback('已显示到屏幕（' + t + ' 字节）', 'ok');
+            if (statusCallback) statusCallback('已显示到屏幕（' + t + '）', 'ok');
             return true;
         } catch (e) {
             if (statusCallback) statusCallback('上传失败：' + e.message, 'err');

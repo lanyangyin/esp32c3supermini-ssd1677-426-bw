@@ -14,7 +14,6 @@ for(let i=0; i<16; i++) {
   PALETTE.push('#' + c + c + c);
 }
 
-// 4x4 Bayer 抖动矩阵
 const BAYER = [
   [ 0,  8,  2, 10],
   [12,  4, 14,  6],
@@ -27,7 +26,6 @@ let drawLayer = new Uint8Array(W * H);
 binLayer.fill(TRANSPARENT);
 drawLayer.fill(TRANSPARENT);
 
-// 默认背景透明
 let bgColorIdx = TRANSPARENT;
 let contentLocked = false;
 
@@ -37,15 +35,11 @@ let brushSize = 4;
 let textModeActive = false;
 
 function snapshot() {
-  return {
-    bin:  new Uint8Array(binLayer),
-    draw: new Uint8Array(drawLayer),
-    bg:   bgColorIdx
-  };
+  return { bin: new Uint8Array(binLayer), draw: new Uint8Array(drawLayer), bg: bgColorIdx };
 }
 
 function restore(snap) {
-  binLayer  = new Uint8Array(snap.bin);
+  binLayer = new Uint8Array(snap.bin);
   drawLayer = new Uint8Array(snap.draw);
   bgColorIdx = snap.bg;
 }
@@ -65,7 +59,6 @@ let drawing = false;
 let lastX = -1, lastY = -1;
 let currentPointerId = null;
 
-// 解析当前坐标的像素颜色（包括透明）
 function resolveIndex(x, y) {
   const i = y * W + x;
   let v = drawLayer[i];
@@ -89,7 +82,6 @@ function render() {
     if (v === TRANSPARENT) v = bgColorIdx;
 
     if (v === TRANSPARENT) {
-      // 透明棋盘格模拟
       const x = i % W;
       const y = Math.floor(i / W);
       const isEven = ((x >> 3) + (y >> 3)) % 2 === 0;
@@ -103,7 +95,6 @@ function render() {
   ctxMain.putImageData(img, 0, 0);
 }
 
-// 加载 1bpp 数据解包为 16 级灰度
 function unpack(buf) {
   const out = new Uint8Array(W * H);
   let k = 0;
@@ -118,8 +109,6 @@ function unpack(buf) {
   return out;
 }
 
-// 打包为 1bpp 数据（带 Bayer 抖动）
-// 透明像素打包为白色 (0xFF, 即 15)
 function packLayers() {
   const buf = new Uint8Array(FRAME_BYTES);
   let k = 0;
@@ -128,7 +117,7 @@ function packLayers() {
       let byte_val = 0;
       for (let bit = 0; bit < 8; bit++) {
         let v = resolveIndex(x + bit, y);
-        if (v === TRANSPARENT) v = 15; // 透明按纯白处理
+        if (v === TRANSPARENT) v = 15;
         if (v * 17 > BAYER[y % 4][(x + bit) % 4] * 16 + 8) {
           byte_val |= (0x80 >> bit);
         }
@@ -136,6 +125,177 @@ function packLayers() {
       buf[k++] = byte_val;
     }
   }
+  return buf;
+}
+
+// ==== 单矩形打包 ====
+function getBoundingBox() {
+  let minX = W, minY = H, maxX = -1, maxY = -1;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let i = y * W + x;
+      if (drawLayer[i] !== TRANSPARENT || binLayer[i] !== TRANSPARENT) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < minX) return null;
+  return { x0: minX, y0: minY, x1: maxX, y1: maxY };
+}
+
+function packPartial(box) {
+  const x0 = box.x0 & ~7;
+  const x1 = (box.x1 | 7) >= W ? W - 1 : (box.x1 | 7);
+  const y0 = box.y0;
+  const y1 = box.y1;
+  const w = x1 - x0 + 1;
+  const h = y1 - y0 + 1;
+  const rowBytes = w >> 3;
+  const buf = new Uint8Array(rowBytes * h);
+
+  let k = 0;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x += 8) {
+      let byte_val = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        let px = x + bit;
+        if (px > x1) break;
+        let v = resolveIndex(px, y);
+        if (v === TRANSPARENT) v = 15;
+        if (v * 17 > BAYER[y % 4][px % 4] * 16 + 8) {
+          byte_val |= (0x80 >> bit);
+        }
+      }
+      buf[k++] = byte_val;
+    }
+  }
+  return { buf, x0, y0, x1, y1 };
+}
+
+// ==== 多矩形打包 ====
+function getMultiRects() {
+  const CELL = 16;
+  const cols = Math.ceil(W / CELL);
+  const rows = Math.ceil(H / CELL);
+  const grid = new Uint8Array(cols * rows);
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let i = y * W + x;
+      if (drawLayer[i] !== TRANSPARENT || binLayer[i] !== TRANSPARENT) {
+        const cx = Math.floor(x / CELL);
+        const cy = Math.floor(y / CELL);
+        grid[cy * cols + cx] = 1;
+      }
+    }
+  }
+
+  const rects = [];
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < cols; cx++) {
+      if (grid[cy * cols + cx] !== 1) continue;
+
+      let w_cells = 1;
+      while (cx + w_cells < cols && grid[cy * cols + cx + w_cells] === 1) {
+        w_cells++;
+      }
+
+      let h_cells = 1;
+      let canExpandDown = true;
+      while (cy + h_cells < rows && canExpandDown) {
+        for (let i = 0; i < w_cells; i++) {
+          if (grid[(cy + h_cells) * cols + cx + i] !== 1) {
+            canExpandDown = false; break;
+          }
+        }
+        if (canExpandDown) h_cells++;
+      }
+
+      for (let dy = 0; dy < h_cells; dy++) {
+        for (let dx = 0; dx < w_cells; dx++) {
+          grid[(cy + dy) * cols + cx + dx] = 0;
+        }
+      }
+
+      const x0 = cx * CELL;
+      const y0 = cy * CELL;
+      const x1 = Math.min(W - 1, (cx + w_cells) * CELL - 1);
+      const y1 = Math.min(H - 1, (cy + h_cells) * CELL - 1);
+
+      rects.push({ x0, y0, x1, y1 });
+    }
+  }
+  return rects;
+}
+
+function packMultiRects(rects) {
+  const num_rects = rects.length;
+  if (num_rects === 0) return null;
+
+  const rectDatas = [];
+  let totalDataLen = 0;
+
+  for (const r of rects) {
+    const x0 = r.x0 & ~7;
+    const x1 = (r.x1 | 7) >= W ? W - 1 : (r.x1 | 7);
+    const w = x1 - x0 + 1;
+    const h = r.y1 - r.y0 + 1;
+    const rowBytes = w >> 3;
+    const len = rowBytes * h;
+
+    const data = new Uint8Array(len);
+    let k = 0;
+    for (let y = r.y0; y <= r.y1; y++) {
+      for (let x = x0; x <= x1; x += 8) {
+        let byte_val = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          let px = x + bit;
+          if (px > x1) break;
+          let v = resolveIndex(px, y);
+          if (v === TRANSPARENT) v = 15;
+          if (v * 17 > BAYER[y % 4][px % 4] * 16 + 8) {
+            byte_val |= (0x80 >> bit);
+          }
+        }
+        data[k++] = byte_val;
+      }
+    }
+    rectDatas.push(data);
+    totalDataLen += len;
+  }
+
+  const headerLen = 4 + num_rects * 8;
+  const buf = new Uint8Array(headerLen + totalDataLen);
+  let idx = 0;
+
+  buf[idx++] = (num_rects >> 8) & 0xFF;
+  buf[idx++] = num_rects & 0xFF;
+  buf[idx++] = (totalDataLen >> 8) & 0xFF;
+  buf[idx++] = totalDataLen & 0xFF;
+
+  for (let i = 0; i < num_rects; i++) {
+    const r = rects[i];
+    const x0 = r.x0 & ~7;
+    const x1 = (r.x1 | 7) >= W ? W - 1 : (r.x1 | 7);
+
+    buf[idx++] = (x0 >> 8) & 0xFF;
+    buf[idx++] = x0 & 0xFF;
+    buf[idx++] = (r.y0 >> 8) & 0xFF;
+    buf[idx++] = r.y0 & 0xFF;
+    buf[idx++] = (x1 >> 8) & 0xFF;
+    buf[idx++] = x1 & 0xFF;
+    buf[idx++] = (r.y1 >> 8) & 0xFF;
+    buf[idx++] = r.y1 & 0xFF;
+  }
+
+  for (let i = 0; i < num_rects; i++) {
+    buf.set(rectDatas[i], idx);
+    idx += rectDatas[i].length;
+  }
+
   return buf;
 }
 
@@ -218,7 +378,7 @@ function drawLine(x0, y0, x1, y1) {
 
 function pickColorAt(x, y) {
   const R = 2;
-  const counts = new Array(17).fill(0); // 索引 16 代表透明
+  const counts = new Array(17).fill(0);
   let total = 0;
   for (let dy = -R; dy <= R; dy++) {
     for (let dx = -R; dx <= R; dx++) {
@@ -467,7 +627,7 @@ function drawTextToDrawLayer(x, y) {
   const img = octx.getImageData(0, 0, W, H);
   const d = img.data;
   let count = 0;
-  const targetColor = currentColor; // 可能是 TRANSPARENT
+  const targetColor = currentColor;
   for (let i = 0; i < W * H; i++) {
     if (d[i*4 + 3] > 0) {
       drawLayer[i] = targetColor;
@@ -488,7 +648,6 @@ function buildSwatches() {
   const basic = $('graySwatches');
   basic.innerHTML = '';
 
-  // 添加透明色
   const transEl = document.createElement('div');
   transEl.className = 'swatch transparent';
   transEl.title = '透明';
@@ -525,7 +684,6 @@ function buildSwatches() {
   const bg = $('bgSwatches');
   bg.innerHTML = '';
 
-  // 背景透明
   const bgTransEl = document.createElement('div');
   bgTransEl.className = 'swatch transparent';
   bgTransEl.title = '背景透明';
@@ -595,143 +753,6 @@ function updateLockUI() {
     label.textContent = '未锁定 · 橡皮可穿透擦除 BIN';
     label.className = 'unlocked';
   }
-}
-
-// 算法：按 16x16 网格扫描，找出非透明块，贪心合并成大矩形
-function getMultiRects() {
-  const CELL = 16;
-  const cols = Math.ceil(W / CELL);
-  const rows = Math.ceil(H / CELL);
-  const grid = new Uint8Array(cols * rows);
-
-  // 1. 标记脏块
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      let i = y * W + x;
-      if (drawLayer[i] !== TRANSPARENT || binLayer[i] !== TRANSPARENT) {
-        const cx = Math.floor(x / CELL);
-        const cy = Math.floor(y / CELL);
-        grid[cy * cols + cx] = 1;
-      }
-    }
-  }
-
-  // 2. 贪心合并
-  const rects = [];
-  for (let cy = 0; cy < rows; cy++) {
-    for (let cx = 0; cx < cols; cx++) {
-      if (grid[cy * cols + cx] !== 1) continue;
-
-      // 向右扩展
-      let w_cells = 1;
-      while (cx + w_cells < cols && grid[cy * cols + cx + w_cells] === 1) {
-        w_cells++;
-      }
-
-      // 向下扩展
-      let h_cells = 1;
-      let canExpandDown = true;
-      while (cy + h_cells < rows && canExpandDown) {
-        for (let i = 0; i < w_cells; i++) {
-          if (grid[(cy + h_cells) * cols + cx + i] !== 1) {
-            canExpandDown = false;
-            break;
-          }
-        }
-        if (canExpandDown) h_cells++;
-      }
-
-      // 标记已合并的块为已处理
-      for (let dy = 0; dy < h_cells; dy++) {
-        for (let dx = 0; dx < w_cells; dx++) {
-          grid[(cy + dy) * cols + cx + dx] = 0;
-        }
-      }
-
-      // 计算实际像素坐标
-      const x0 = cx * CELL;
-      const y0 = cy * CELL;
-      const x1 = Math.min(W - 1, (cx + w_cells) * CELL - 1);
-      const y1 = Math.min(H - 1, (cy + h_cells) * CELL - 1);
-
-      rects.push({ x0, y0, x1, y1 });
-    }
-  }
-  return rects;
-}
-
-// 提取每个矩形的 1bpp 数据，并拼接成二进制包
-function packMultiRects(rects) {
-  const num_rects = rects.length;
-  if (num_rects === 0) return null;
-
-  const rectDatas = [];
-  let totalDataLen = 0;
-
-  for (const r of rects) {
-    // 强制 X 对齐
-    const x0 = r.x0 & ~7;
-    const x1 = (r.x1 | 7) >= W ? W - 1 : (r.x1 | 7);
-    const w = x1 - x0 + 1;
-    const h = r.y1 - r.y0 + 1;
-    const rowBytes = w >> 3;
-    const len = rowBytes * h;
-
-    const data = new Uint8Array(len);
-    let k = 0;
-    for (let y = r.y0; y <= r.y1; y++) {
-      for (let x = x0; x <= x1; x += 8) {
-        let byte_val = 0;
-        for (let bit = 0; bit < 8; bit++) {
-          let px = x + bit;
-          if (px > x1) break;
-
-          let v = resolveIndex(px, y);
-          if (v === TRANSPARENT) v = 15; // 透明转白
-
-          if (v * 17 > BAYER[y % 4][px % 4] * 16 + 8) {
-            byte_val |= (0x80 >> bit);
-          }
-        }
-        data[k++] = byte_val;
-      }
-    }
-    rectDatas.push(data);
-    totalDataLen += len;
-  }
-
-  // 组包: [N(2)] [dataLen(2)] [x0,y0,x1,y1 (各2B)]... [Data]
-  const headerLen = 4 + num_rects * 8;
-  const buf = new Uint8Array(headerLen + totalDataLen);
-  let idx = 0;
-
-  buf[idx++] = (num_rects >> 8) & 0xFF;
-  buf[idx++] = num_rects & 0xFF;
-  buf[idx++] = (totalDataLen >> 8) & 0xFF;
-  buf[idx++] = totalDataLen & 0xFF;
-
-  for (let i = 0; i < num_rects; i++) {
-    const r = rects[i];
-    // X 坐标必须按 8 对齐传给后端
-    const x0 = r.x0 & ~7;
-    const x1 = (r.x1 | 7) >= W ? W - 1 : (r.x1 | 7);
-
-    buf[idx++] = (x0 >> 8) & 0xFF;
-    buf[idx++] = x0 & 0xFF;
-    buf[idx++] = (r.y0 >> 8) & 0xFF;
-    buf[idx++] = r.y0 & 0xFF;
-    buf[idx++] = (x1 >> 8) & 0xFF;
-    buf[idx++] = x1 & 0xFF;
-    buf[idx++] = (r.y1 >> 8) & 0xFF;
-    buf[idx++] = r.y1 & 0xFF;
-  }
-
-  for (let i = 0; i < num_rects; i++) {
-    buf.set(rectDatas[i], idx);
-    idx += rectDatas[i].length;
-  }
-
-  return buf;
 }
 
 async function displayToScreen() {
@@ -854,7 +875,7 @@ function bindEvents() {
     saveHistory();
     drawLayer.fill(TRANSPARENT);
     render();
-    setStatus('已清空绘制层（画笔和文字已清除，可 Ctrl+Z 撤销）', 'ok');
+    setStatus('已清空绘制层', 'ok');
   });
 
   $('clearAllBtn').addEventListener('click', () => {
@@ -869,7 +890,7 @@ function bindEvents() {
     drawLayer.fill(TRANSPARENT);
     binLayer.fill(TRANSPARENT);
     render();
-    setStatus('已清空全部' + unlockedMsg + '，可 Ctrl+Z 撤销', 'ok');
+    setStatus('已清空全部' + unlockedMsg, 'ok');
   });
 
   $('loadBtn').addEventListener('click', () => $('fileInput').click());

@@ -69,14 +69,10 @@ def handle_upload(conn, headers, body_prefix):
     except Exception:
         pass
 
-    err = None
-
     try:
         epd.init()
 
         if mode == 'partial_multi':
-            # 多矩形局刷解析
-            # 协议：2B 矩形数N, 2B 数据总长，N*(2B x0, 2B y0, 2B x1, 2B y1)，然后紧接着拼接的数据
             buffer = bytearray(total_len)
             received = 0
             if body_prefix:
@@ -112,7 +108,6 @@ def handle_upload(conn, headers, body_prefix):
                 y1 = (buffer[idx] << 8) | buffer[idx + 1];
                 idx += 2
 
-                # 计算此矩形需要的字节数（X强制对齐）
                 aligned_x0 = x0 & ~7
                 aligned_x1 = (x1 | 7)
                 if aligned_x1 >= 800: aligned_x1 = 799
@@ -121,11 +116,9 @@ def handle_upload(conn, headers, body_prefix):
                 row_bytes = w >> 3
                 rect_len = row_bytes * h
 
-                # 提取该矩形的数据
                 rect_data = buffer[data_offset: data_offset + rect_len]
                 data_offset += rect_len
 
-                # 写入驱动（坐标用对齐后的）
                 epd._display.write_partial_rect(aligned_x0, y0, aligned_x1, y1, rect_data)
 
             epd._display.end_partial_multi()
@@ -133,7 +126,7 @@ def handle_upload(conn, headers, body_prefix):
             _send_response_only(conn, b"200 OK", b"OK")
             return
 
-        # ===== 下面是全屏或单矩形 =====
+        # ===== 单矩形或全屏 =====
         x0 = _extract_query_param(headers, 'x0')
         y0 = _extract_query_param(headers, 'y0')
         x1 = _extract_query_param(headers, 'x1')
@@ -149,7 +142,6 @@ def handle_upload(conn, headers, body_prefix):
 
         epd_written = 0
         if is_partial:
-            # 单矩形局部刷新
             x0 = x0 & ~7
             x1 = (x1 | 7)
             if x1 >= 800: x1 = 799
@@ -160,12 +152,12 @@ def handle_upload(conn, headers, body_prefix):
             h = y1 - y0 + 1
             need = (w >> 3) * h
 
-            epd._display._cmd(0x91)  # PARTIAL_IN
+            epd._display._cmd(0x91)
             epd._display._set_window(x0, y1, x1, y0)
             epd._display._set_cursor(x0, y0)
             epd._display.cs(0)
             epd._display.dc(0)
-            epd._display.spi.write(bytearray([0x24]))  # WRITE_RAM_BW
+            epd._display.spi.write(bytearray([0x24]))
             epd._display.dc(1)
         else:
             epd.begin_frame()
@@ -188,8 +180,7 @@ def handle_upload(conn, headers, body_prefix):
                 epd_written += len(chunk)
                 gc.collect()
         except Exception as e:
-            err = str(e)
-            print("[UPLOAD] write error:", e)
+            pass
 
         if is_partial:
             epd._display.cs(1)
@@ -198,7 +189,7 @@ def handle_upload(conn, headers, body_prefix):
             epd._display._busy_wait()
             epd._display._cmd(0x90)
 
-        # 排空剩余数据
+        # 排空剩余
         prefix_len = len(body_prefix) if body_prefix else 0
         remaining = total_len - prefix_len
         already_from_conn = epd_written - min(prefix_len, need)
@@ -213,23 +204,19 @@ def handle_upload(conn, headers, body_prefix):
             except Exception:
                 pass
 
-        if err:
-            _send_response_only(conn, b"500 Internal Server Error", err.encode())
-        else:
-            _send_response_only(conn, b"200 OK", str(epd_written).encode())
+        _send_response_only(conn, b"200 OK", str(epd_written).encode())
 
         if not is_partial:
             try:
                 epd.end_frame(mode)
-            except Exception as e:
-                print("[UPLOAD] end_frame error:", e)
+            except Exception:
+                pass
         try:
             epd.sleep()
         except Exception:
             pass
 
     except Exception as e:
-        err = str(e)
         print("[UPLOAD] fatal:", e)
         _send_response_only(conn, b"500 Internal Server Error", str(e).encode())
         try:

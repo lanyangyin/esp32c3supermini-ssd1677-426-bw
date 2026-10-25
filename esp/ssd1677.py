@@ -101,7 +101,6 @@ class SSD1677:
         self._busy_wait()
 
     def begin_frame(self):
-        """全屏刷新准备"""
         self._in_stream = True
         self._bytes_written = 0
         self._frame_bytes = (self.width * self.height) // 8
@@ -143,44 +142,29 @@ class SSD1677:
         else:
             raise ValueError("mode must be 'full' / 'fast' / 'partial'")
 
-    # ================== 多矩形局刷支持 ==================
+    # ================== 多矩形局刷专用 ==================
 
     def start_partial_multi(self):
-        """多矩形局刷：初始化局部刷新模式"""
         self._cmd(_PARTIAL_IN)
-        self.cs(0)
-        self.dc(0)
-        self.spi.write(bytearray([_WRITE_RAM_BW]))
-        self.dc(1)
-        self._in_stream = True
 
     def write_partial_rect(self, x0, y0, x1, y1, data):
-        """写入一个矩形窗口的数据（不触发刷新）"""
-        # 强制 X 对齐到 8 的倍数
         x0 = x0 & ~7
         x1 = (x1 | 7)
         if x1 >= self.width: x1 = self.width - 1
         if y0 < 0: y0 = 0
         if y1 >= self.height: y1 = self.height - 1
 
-        # 设置窗口
-        self.cs(1)
         self._set_window(x0, y1, x1, y0)
         self._set_cursor(x0, y0)
 
-        # 重新开启数据流
         self.cs(0)
+        self.dc(0)
+        self.spi.write(bytearray([_WRITE_RAM_BW]))
         self.dc(1)
         self.spi.write(data)
         self.cs(1)
 
     def end_partial_multi(self):
-        """所有矩形写完后，统一触发刷新"""
-        if not self._in_stream:
-            return
-        self._in_stream = False
-        self.cs(1)
-
         self._cmd(_DISPLAY_UPDATE_CONTROL_2, _UPDATE_FAST)
         self._cmd(_MASTER_ACTIVATION)
         self._busy_wait()
