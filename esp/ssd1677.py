@@ -111,6 +111,30 @@ class SSD1677:
         self.spi.write(bytearray([_WRITE_RAM_BW]))
         self.dc(1)
 
+    def begin_frame_partial(self, x0, y0, x1, y1):
+        """单矩形局部刷新准备"""
+        x0 = x0 & ~7
+        x1 = (x1 | 7)
+        if x1 >= self.width: x1 = self.width - 1
+        if y0 < 0: y0 = 0
+        if y1 >= self.height: y1 = self.height - 1
+
+        w = x1 - x0 + 1
+        h = y1 - y0 + 1
+
+        self._in_stream = True
+        self._bytes_written = 0
+        self._frame_bytes = (w * h) // 8
+
+        self._cmd(_PARTIAL_IN)  # 0x91
+        self._set_window(x0, y1, x1, y0)
+        self._set_cursor(x0, y0)
+
+        self.cs(0)
+        self.dc(0)
+        self.spi.write(bytearray([_WRITE_RAM_BW]))
+        self.dc(1)
+
     def write_chunk(self, chunk):
         if not self._in_stream:
             raise OSError("Must call begin_frame() first")
@@ -154,6 +178,7 @@ class SSD1677:
         if y0 < 0: y0 = 0
         if y1 >= self.height: y1 = self.height - 1
 
+        # 这里保持与全屏一致的诡异映射，让底层自己处理
         self._set_window(x0, y1, x1, y0)
         self._set_cursor(x0, y0)
 

@@ -157,7 +157,8 @@ function packPartial(box) {
   const buf = new Uint8Array(rowBytes * h);
 
   let k = 0;
-  for (let y = y0; y <= y1; y++) {
+  // 逆向遍历 Y 轴（从 y1 到 y0）
+  for (let y = y1; y >= y0; y--) {
     for (let x = x0; x <= x1; x += 8) {
       let byte_val = 0;
       for (let bit = 0; bit < 8; bit++) {
@@ -248,7 +249,8 @@ function packMultiRects(rects) {
 
     const data = new Uint8Array(len);
     let k = 0;
-    for (let y = r.y0; y <= r.y1; y++) {
+    // 逆向遍历 Y 轴（从 y1 到 y0）
+    for (let y = r.y1; y >= r.y0; y--) {
       for (let x = x0; x <= x1; x += 8) {
         let byte_val = 0;
         for (let bit = 0; bit < 8; bit++) {

@@ -127,15 +127,18 @@ def handle_upload(conn, headers, body_prefix):
             return
 
         # ===== 单矩形或全屏 =====
-        x0 = _extract_query_param(headers, 'x0')
-        y0 = _extract_query_param(headers, 'y0')
-        x1 = _extract_query_param(headers, 'x1')
-        y1 = _extract_query_param(headers, 'y1')
+        x0_str = _extract_query_param(headers, 'x0')
+        y0_str = _extract_query_param(headers, 'y0')
+        x1_str = _extract_query_param(headers, 'x1')
+        y1_str = _extract_query_param(headers, 'y1')
 
         is_partial = False
-        if mode == 'partial' and x0 and y0 and x1 and y1:
+        if mode == 'partial' and x0_str and y0_str and x1_str and y1_str:
             try:
-                x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
+                x0 = int(x0_str)
+                y0 = int(y0_str)
+                x1 = int(x1_str)
+                y1 = int(y1_str)
                 is_partial = True
             except ValueError:
                 pass
@@ -152,13 +155,8 @@ def handle_upload(conn, headers, body_prefix):
             h = y1 - y0 + 1
             need = (w >> 3) * h
 
-            epd._display._cmd(0x91)
-            epd._display._set_window(x0, y1, x1, y0)
-            epd._display._set_cursor(x0, y0)
-            epd._display.cs(0)
-            epd._display.dc(0)
-            epd._display.spi.write(bytearray([0x24]))
-            epd._display.dc(1)
+            # 使用前面补全的 begin_frame_partial
+            epd._display.begin_frame_partial(x0, y0, x1, y1)
         else:
             epd.begin_frame()
             need = min(total_len, FRAME_BYTES)
@@ -180,7 +178,7 @@ def handle_upload(conn, headers, body_prefix):
                 epd_written += len(chunk)
                 gc.collect()
         except Exception as e:
-            pass
+            print("[UPLOAD] write error:", e)
 
         if is_partial:
             epd._display.cs(1)
