@@ -112,7 +112,6 @@ class SSD1677:
         self.dc(1)
 
     def begin_frame_partial(self, x0, y0, x1, y1):
-        """单矩形局部刷新准备"""
         x0 = x0 & ~7
         x1 = (x1 | 7)
         if x1 >= self.width: x1 = self.width - 1
@@ -126,7 +125,7 @@ class SSD1677:
         self._bytes_written = 0
         self._frame_bytes = (w * h) // 8
 
-        self._cmd(_PARTIAL_IN)  # 0x91
+        self._cmd(_PARTIAL_IN)
         self._set_window(x0, y1, x1, y0)
         self._set_cursor(x0, y0)
 
@@ -178,7 +177,6 @@ class SSD1677:
         if y0 < 0: y0 = 0
         if y1 >= self.height: y1 = self.height - 1
 
-        # 这里保持与全屏一致的诡异映射，让底层自己处理
         self._set_window(x0, y1, x1, y0)
         self._set_cursor(x0, y0)
 

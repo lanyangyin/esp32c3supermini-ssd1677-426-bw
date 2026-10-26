@@ -56,6 +56,10 @@ def _norm_mode(raw):
     return 'full'
 
 
+# ============================================================
+# 上传并直接显示（含全刷、单矩形局刷、多矩形局刷）
+# ============================================================
+
 def handle_upload(conn, headers, body_prefix):
     mode = _norm_mode(_extract_query_param(headers, 'mode'))
 
@@ -73,6 +77,7 @@ def handle_upload(conn, headers, body_prefix):
         epd.init()
 
         if mode == 'partial_multi':
+            # 多矩形局刷
             buffer = bytearray(total_len)
             received = 0
             if body_prefix:
@@ -119,7 +124,10 @@ def handle_upload(conn, headers, body_prefix):
                 rect_data = buffer[data_offset: data_offset + rect_len]
                 data_offset += rect_len
 
-                epd._display.write_partial_rect(aligned_x0, y0, aligned_x1, y1, rect_data)
+                # 核心修复：计算真实 Y 轴坐标
+                real_y0 = 479 - y1
+                real_y1 = 479 - y0
+                epd._display.write_partial_rect(aligned_x0, real_y0, aligned_x1, real_y1, rect_data)
 
             epd._display.end_partial_multi()
             epd.sleep()
@@ -155,8 +163,10 @@ def handle_upload(conn, headers, body_prefix):
             h = y1 - y0 + 1
             need = (w >> 3) * h
 
-            # 使用前面补全的 begin_frame_partial
-            epd._display.begin_frame_partial(x0, y0, x1, y1)
+            # 核心修复：计算真实 Y 轴坐标
+            real_y0 = 479 - y1
+            real_y1 = 479 - y0
+            epd._display.begin_frame_partial(x0, real_y0, x1, real_y1)
         else:
             epd.begin_frame()
             need = min(total_len, FRAME_BYTES)
