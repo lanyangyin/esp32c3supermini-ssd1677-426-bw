@@ -157,7 +157,6 @@ function packPartial(box) {
   const buf = new Uint8Array(rowBytes * h);
 
   let k = 0;
-  // 正序打包
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x += 8) {
       let byte_val = 0;
@@ -177,18 +176,17 @@ function packPartial(box) {
 }
 
 // ==== 多矩形打包 ====
-function getMultiRects() {
-  const CELL = 16;
-  const cols = Math.ceil(W / CELL);
-  const rows = Math.ceil(H / CELL);
+function getMultiRects(cellW, cellH) {
+  const cols = Math.ceil(W / cellW);
+  const rows = Math.ceil(H / cellH);
   const grid = new Uint8Array(cols * rows);
 
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       let i = y * W + x;
       if (drawLayer[i] !== TRANSPARENT || binLayer[i] !== TRANSPARENT) {
-        const cx = Math.floor(x / CELL);
-        const cy = Math.floor(y / CELL);
+        const cx = Math.floor(x / cellW);
+        const cy = Math.floor(y / cellH);
         grid[cy * cols + cx] = 1;
       }
     }
@@ -221,14 +219,21 @@ function getMultiRects() {
         }
       }
 
-      const x0 = cx * CELL;
-      const y0 = cy * CELL;
-      const x1 = Math.min(W - 1, (cx + w_cells) * CELL - 1);
-      const y1 = Math.min(H - 1, (cy + h_cells) * CELL - 1);
+      const x0 = cx * cellW;
+      const y0 = cy * cellH;
+      const x1 = Math.min(W - 1, (cx + w_cells) * cellW - 1);
+      const y1 = Math.min(H - 1, (cy + h_cells) * cellH - 1);
 
       rects.push({ x0, y0, x1, y1 });
     }
   }
+
+  // 限制最大块数为 200
+  if (rects.length > 200) {
+    console.warn('多矩形块数过多（>200），已合并为单矩形');
+    return [{ x0: 0, y0: 0, x1: W-1, y1: H-1 }];
+  }
+
   return rects;
 }
 
@@ -240,6 +245,7 @@ function packMultiRects(rects) {
   let totalDataLen = 0;
 
   for (const r of rects) {
+    // 这里会自动把 1x1 强制对齐到 8 的倍数（如果 x1-x0+1 < 8）
     const x0 = r.x0 & ~7;
     const x1 = (r.x1 | 7) >= W ? W - 1 : (r.x1 | 7);
     const w = x1 - x0 + 1;
@@ -249,7 +255,6 @@ function packMultiRects(rects) {
 
     const data = new Uint8Array(len);
     let k = 0;
-    // 正序打包
     for (let y = r.y0; y <= r.y1; y++) {
       for (let x = x0; x <= x1; x += 8) {
         let byte_val = 0;
@@ -781,7 +786,12 @@ async function displayToScreen() {
       bounds = { x0: res.x0, y0: res.y0, x1: res.x1, y1: res.y1 };
       setStatus(`单矩形: ${bounds.x1-bounds.x0+1}x${bounds.y1-bounds.y0+1}`, 'busy');
     } else if (mode === 'partial_multi') {
-      const rects = getMultiRects();
+      const rectSizeStr = $('rectSize').value;
+      const parts = rectSizeStr.split('x');
+      const cellW = parseInt(parts[0], 10) || 1;
+      const cellH = parseInt(parts[1], 10) || 1;
+
+      const rects = getMultiRects(cellW, cellH);
       if (rects.length === 0) {
         setStatus('画布全透明，无内容可刷新', 'err');
         btn.disabled = false;
@@ -796,7 +806,7 @@ async function displayToScreen() {
 
     await window.E6Display.uploadToScreen(bin, mode, setStatus, bounds);
   } catch (e) {
-    setStatus('显示失败：' + e.message, 'err');
+      setStatus('显示失败：' + e.message, 'err');
   } finally {
     btn.disabled = false;
     btn.textContent = originalText;

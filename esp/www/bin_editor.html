@@ -27,7 +27,7 @@
   }
   header h1{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
   header .brand{display:inline-block;width:10px;height:14px;border:2px solid var(--accent-strong);}
-  .header-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .header-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   main{
     display:grid;
     grid-template-columns:minmax(320px,380px) minmax(0,1fr);
@@ -197,6 +197,17 @@
     <button type="button" id="loadBtn">打开 BIN</button>
     <button type="button" id="saveBtn">保存 BIN</button>
     <button type="button" id="clearGhostingBtn" class="danger" style="background:#3a1414">去除残影</button>
+
+    <!-- 网格粒度选择 -->
+    <select id="rectSize" style="padding:6px 8px;border:1px solid var(--line-strong);border-radius:4px;background:var(--panel-deep);color:var(--ink);font-size:13px;min-height:32px;width:130px">
+      <option value="1x1">1 x 1 (极限粒度)</option>
+      <option value="8x1">8 x 1</option>
+      <option value="8x8">8 x 8</option>
+      <option value="16x16" selected>16 x 16 (均衡)</option>
+      <option value="32x32">32 x 32</option>
+      <option value="64x64">64 x 64 (粗粒度)</option>
+    </select>
+
     <button type="button" id="displayBtn" class="primary">显示到屏幕</button>
     <select id="refreshMode" style="padding:6px 8px;border:1px solid var(--line-strong);border-radius:4px;background:var(--panel-deep);color:var(--ink);font-size:13px;min-height:32px">
       <option value="full">全刷 (4.2s)</option>
