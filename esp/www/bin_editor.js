@@ -157,7 +157,7 @@ function packPartial(box) {
   const buf = new Uint8Array(rowBytes * h);
 
   let k = 0;
-  // 逆向遍历 Y 轴（从 y1 到 y0）
+  // ★ 核心修复：数据倒序打包（从 y1 读到 y0），坐标完全不翻转
   for (let y = y1; y >= y0; y--) {
     for (let x = x0; x <= x1; x += 8) {
       let byte_val = 0;
@@ -249,7 +249,7 @@ function packMultiRects(rects) {
 
     const data = new Uint8Array(len);
     let k = 0;
-    // 逆向遍历 Y 轴（从 y1 到 y0）
+    // ★ 核心修复：数据倒序打包（从 y1 读到 y0）
     for (let y = r.y1; y >= r.y0; y--) {
       for (let x = x0; x <= x1; x += 8) {
         let byte_val = 0;
@@ -285,11 +285,11 @@ function packMultiRects(rects) {
 
     buf[idx++] = (x0 >> 8) & 0xFF;
     buf[idx++] = x0 & 0xFF;
-    buf[idx++] = (r.y0 >> 8) & 0xFF;
+    buf[idx++] = (r.y0 >> 8) & 0xFF;   // 坐标不变
     buf[idx++] = r.y0 & 0xFF;
     buf[idx++] = (x1 >> 8) & 0xFF;
     buf[idx++] = x1 & 0xFF;
-    buf[idx++] = (r.y1 >> 8) & 0xFF;
+    buf[idx++] = (r.y1 >> 8) & 0xFF;   // 坐标不变
     buf[idx++] = r.y1 & 0xFF;
   }
 
